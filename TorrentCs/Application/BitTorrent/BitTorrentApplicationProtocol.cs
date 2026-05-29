@@ -213,6 +213,15 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
 
     private void PeerConnected(BitTorrentPeer peer, ITransportStream stream)
     {
+        // Reject self-connections: a tracker may hand us back our own endpoint, and the handshake
+        // then carries our own peer id. Connecting to ourselves would waste a connection slot.
+        if (peer.PeerId.Value.SequenceEqual(_localPeerId.Value))
+        {
+            _logger.LogDebug("Ignoring self-connection to {Address}", peer.Address);
+            peer.Disconnect();
+            return;
+        }
+
         peer.SetHandler(this);
         lock (_peersLock) _peers.Add(peer);
 

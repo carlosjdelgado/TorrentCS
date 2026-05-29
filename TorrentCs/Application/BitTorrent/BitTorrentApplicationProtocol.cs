@@ -90,7 +90,8 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
 
     public void ConnectToPeer(ITransportStream stream) => _ = ConnectToPeerAsync(stream);
 
-    public void AcceptConnection(ITransportStream stream) => _ = AcceptConnectionAsync(stream);
+    public void AcceptConnection(ITransportStream stream, byte[] reservedBytes, byte[] remotePeerId)
+        => _ = AcceptConnectionAsync(stream, reservedBytes, remotePeerId);
 
     public void PieceCompleted(Piece piece)
     {
@@ -155,7 +156,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         {
             await stream.Connect();
             var peer = new BitTorrentPeer(stream, Metainfo);
-            await peer.PerformHandshakeAsync(Metainfo, _localPeerId, isInitiator: true);
+            await peer.PerformHandshakeAsync(Metainfo, _localPeerId, BuildReservedBytes(), isInitiator: true);
             PeerConnected(peer, stream);
         }
         catch (Exception ex)
@@ -168,20 +169,30 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         }
     }
 
-    private async Task AcceptConnectionAsync(ITransportStream stream)
+    private async Task AcceptConnectionAsync(ITransportStream stream, byte[] reservedBytes, byte[] remotePeerId)
     {
         try
         {
             // The client already read the incoming handshake and routed it here by info-hash;
-            // we only need to send our half of the handshake.
+            // record the remote's details and send our half of the handshake.
             var peer = new BitTorrentPeer(stream, Metainfo);
-            await peer.SendHandshakeResponseAsync(Metainfo, _localPeerId);
+            peer.ApplyRemoteHandshake(reservedBytes, remotePeerId);
+            await peer.SendHandshakeResponseAsync(Metainfo, _localPeerId, BuildReservedBytes());
             PeerConnected(peer, stream);
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Failed to accept connection from {Address}", stream.DisplayAddress);
         }
+    }
+
+    private byte[] BuildReservedBytes()
+    {
+        var reserved = new byte[8];
+        var context = new PrepareHandshakeContext(reserved);
+        foreach (var module in _modules)
+            module.OnPrepareHandshake(context);
+        return reserved;
     }
 
     private void PeerConnected(BitTorrentPeer peer, ITransportStream stream)

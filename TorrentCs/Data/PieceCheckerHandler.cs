@@ -6,8 +6,9 @@ namespace TorrentCs.Data;
 public class PieceCheckerHandler : IPieceDataHandler
 {
     private readonly IBlockDataHandler _inner;
-    private readonly Dictionary<int, List<Block>> _pendingBlocks = new();
-    private readonly HashSet<Piece> _completedPieces = new();
+    private readonly Dictionary<int, List<Block>> _pendingBlocks = [];
+    private readonly HashSet<Piece> _completedPieces = [];
+    private readonly object _lock = new();
 
     public PieceCheckerHandler(IBlockDataHandler inner, Metainfo metainfo)
     {
@@ -19,7 +20,12 @@ public class PieceCheckerHandler : IPieceDataHandler
     public event Action<Piece>? PieceCompleted;
 
     public Metainfo Metainfo { get; }
-    public IReadOnlyCollection<Piece> CompletedPieces => _completedPieces;
+
+    // Snapshot: read from the download/verify threads while the message threads mutate it.
+    public IReadOnlyCollection<Piece> CompletedPieces
+    {
+        get { lock (_lock) return _completedPieces.ToList(); }
+    }
 
     public byte[] ReadBlockData(long offset, int length) => _inner.ReadBlockData(offset, length);
 
@@ -32,25 +38,35 @@ public class PieceCheckerHandler : IPieceDataHandler
         int blockOffset = (int)(offset % Metainfo.PieceSize);
         var block = new Block(pieceIndex, blockOffset, data);
 
-        if (!_pendingBlocks.TryGetValue(pieceIndex, out var blocks))
+        Piece? completed = null;
+        Piece? corrupted = null;
+        lock (_lock)
         {
-            blocks = new List<Block>();
-            _pendingBlocks[pieceIndex] = blocks;
+            if (!_pendingBlocks.TryGetValue(pieceIndex, out var blocks))
+            {
+                blocks = [];
+                _pendingBlocks[pieceIndex] = blocks;
+            }
+            blocks.Add(block);
+            TryCompletePiece(pieceIndex, ref completed, ref corrupted);
         }
-        blocks.Add(block);
 
-        CheckPiece(pieceIndex);
+        // Raise events outside the lock to avoid holding it during subscriber callbacks.
+        if (completed is not null) PieceCompleted?.Invoke(completed);
+        if (corrupted is not null) PieceCorrupted?.Invoke(corrupted);
     }
 
     public void MarkPieceAsCompleted(Piece piece)
     {
-        _completedPieces.Add(piece);
+        lock (_lock) _completedPieces.Add(piece);
         PieceCompleted?.Invoke(piece);
     }
 
     public void Flush() => _inner.Flush();
 
-    private void CheckPiece(int pieceIndex)
+    // Called under _lock. If pieceIndex's blocks are contiguous and complete, verifies and commits
+    // the piece, reporting the outcome via the ref parameters.
+    private void TryCompletePiece(int pieceIndex, ref Piece? completed, ref Piece? corrupted)
     {
         if (!_pendingBlocks.TryGetValue(pieceIndex, out var blocks))
             return;
@@ -58,7 +74,6 @@ public class PieceCheckerHandler : IPieceDataHandler
         var piece = Metainfo.Pieces[pieceIndex];
         var sorted = blocks.OrderBy(b => b.Offset).ToList();
 
-        // Verify the blocks are contiguous and cover the full piece
         int expectedOffset = 0;
         foreach (var block in sorted)
         {
@@ -67,14 +82,9 @@ public class PieceCheckerHandler : IPieceDataHandler
         }
         if (expectedOffset < piece.Size) return;
 
-        VerifyAndCommit(piece, sorted);
-    }
-
-    private void VerifyAndCommit(Piece piece, List<Block> sortedBlocks)
-    {
         var data = new byte[piece.Size];
         int pos = 0;
-        foreach (var block in sortedBlocks)
+        foreach (var block in sorted)
         {
             Array.Copy(block.Data, 0, data, pos, block.Length);
             pos += block.Length;
@@ -87,11 +97,11 @@ public class PieceCheckerHandler : IPieceDataHandler
         {
             _inner.WriteBlockData(Metainfo.PieceOffset(piece), data);
             _completedPieces.Add(piece);
-            PieceCompleted?.Invoke(piece);
+            completed = piece;
         }
         else
         {
-            PieceCorrupted?.Invoke(piece);
+            corrupted = piece;
         }
     }
 }

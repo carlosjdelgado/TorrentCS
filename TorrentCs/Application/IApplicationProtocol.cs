@@ -22,7 +22,7 @@ public interface IApplicationProtocol
     /// Accepts an incoming connection that has already been routed to this torrent (its handshake
     /// was read and the info-hash matched). The protocol replies with its own handshake.
     /// </summary>
-    void AcceptConnection(ITransportStream stream);
+    void AcceptConnection(ITransportStream stream, byte[] reservedBytes, byte[] remotePeerId);
 
     void PieceCompleted(Piece piece);
     void PieceCorrupted(Piece piece);

@@ -67,8 +67,8 @@ public class BitTorrentPeer : IPeer, IChokablePeer
 
     public void Disconnect() => _stream.Disconnect();
 
-    /// <summary>The info-hash and peer id read from an incoming handshake.</summary>
-    public readonly record struct IncomingHandshake(Sha1Hash InfoHash, byte[] PeerId);
+    /// <summary>The info-hash, peer id and reserved bytes read from an incoming handshake.</summary>
+    public readonly record struct IncomingHandshake(Sha1Hash InfoHash, byte[] PeerId, byte[] ReservedBytes);
 
     /// <summary>
     /// Reads the handshake an initiating peer sends, without verifying the info-hash. Used to route
@@ -94,27 +94,35 @@ public class BitTorrentPeer : IPeer, IChokablePeer
         var peerId = new byte[20];
         await ReadExactlyAsync(stream, peerId, ct);
 
-        return new IncomingHandshake(new Sha1Hash(infoHash), peerId);
+        return new IncomingHandshake(new Sha1Hash(infoHash), peerId, reserved);
+    }
+
+    /// <summary>Records the remote peer's handshake details (used for already-read incoming connections).</summary>
+    public void ApplyRemoteHandshake(byte[] reservedBytes, byte[] remotePeerId)
+    {
+        ReservedBytes = reservedBytes;
+        SupportedExtensions = ProtocolExtensions.DetermineSupportedProtocolExtensions(reservedBytes);
+        PeerId = new PeerId(remotePeerId);
     }
 
     /// <summary>Sends our handshake in reply to an incoming connection whose handshake was read already.</summary>
-    public Task SendHandshakeResponseAsync(Metainfo metainfo, PeerId localPeerId)
-        => SendHandshakeAsync(_stream.Stream, metainfo.InfoHash, localPeerId);
+    public Task SendHandshakeResponseAsync(Metainfo metainfo, PeerId localPeerId, byte[] reservedBytes)
+        => SendHandshakeAsync(_stream.Stream, metainfo.InfoHash, localPeerId, reservedBytes);
 
     public async Task PerformHandshakeAsync(
-        Metainfo metainfo, PeerId localPeerId, bool isInitiator)
+        Metainfo metainfo, PeerId localPeerId, byte[] reservedBytes, bool isInitiator)
     {
         var ns = _stream.Stream;
 
         if (isInitiator)
         {
-            await SendHandshakeAsync(ns, metainfo.InfoHash, localPeerId);
+            await SendHandshakeAsync(ns, metainfo.InfoHash, localPeerId, reservedBytes);
             await ReceiveHandshakeAsync(ns, metainfo.InfoHash);
         }
         else
         {
             await ReceiveHandshakeAsync(ns, metainfo.InfoHash);
-            await SendHandshakeAsync(ns, metainfo.InfoHash, localPeerId);
+            await SendHandshakeAsync(ns, metainfo.InfoHash, localPeerId, reservedBytes);
         }
     }
 
@@ -144,18 +152,19 @@ public class BitTorrentPeer : IPeer, IChokablePeer
         _messageHandler?.PeerDisconnected(this);
     }
 
-    private static async Task SendHandshakeAsync(Stream stream, Sha1Hash infoHash, PeerId peerId)
+    private static async Task SendHandshakeAsync(
+        Stream stream, Sha1Hash infoHash, PeerId peerId, byte[] reservedBytes)
     {
         var pstr = Encoding.ASCII.GetBytes("BitTorrent protocol");
         stream.WriteByte((byte)pstr.Length);
         await stream.WriteAsync(pstr);
-        await stream.WriteAsync(new byte[8]); // reserved
+        await stream.WriteAsync(reservedBytes);
         await stream.WriteAsync(infoHash.Value);
         await stream.WriteAsync(peerId.Value);
         await stream.FlushAsync();
     }
 
-    private static async Task ReceiveHandshakeAsync(Stream stream, Sha1Hash expectedInfoHash)
+    private async Task ReceiveHandshakeAsync(Stream stream, Sha1Hash expectedInfoHash)
     {
         int pstrLen = stream.ReadByte();
         if (pstrLen < 0) throw new EndOfStreamException();
@@ -174,6 +183,8 @@ public class BitTorrentPeer : IPeer, IChokablePeer
 
         if (!infoHash.SequenceEqual(expectedInfoHash.Value))
             throw new InvalidDataException("Info hash mismatch in handshake.");
+
+        ApplyRemoteHandshake(reserved, peerId);
     }
 
     private static async Task ReadExactlyAsync(Stream stream, byte[] buffer, CancellationToken ct = default)

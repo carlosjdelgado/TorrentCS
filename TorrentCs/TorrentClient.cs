@@ -135,7 +135,7 @@ public class TorrentClient : ITorrentClient
             var handshake = await BitTorrentPeer.ReadIncomingHandshakeAsync(stream.Stream);
             if (_protocolsByInfoHash.TryGetValue(handshake.InfoHash, out var protocol))
             {
-                protocol.AcceptConnection(stream);
+                protocol.AcceptConnection(stream, handshake.ReservedBytes, handshake.PeerId);
             }
             else
             {

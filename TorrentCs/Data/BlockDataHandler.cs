@@ -3,6 +3,8 @@ namespace TorrentCs.Data;
 public class BlockDataHandler : IBlockDataHandler
 {
     private readonly IFileHandler _fileHandler;
+    // Serialises seek+read/write against the shared file streams, which several peer threads use.
+    private readonly object _lock = new();
 
     public BlockDataHandler(IFileHandler fileHandler, Metainfo metainfo)
     {
@@ -15,41 +17,44 @@ public class BlockDataHandler : IBlockDataHandler
     public byte[] ReadBlockData(long offset, int length)
     {
         var data = new byte[length];
-        ReadInto(offset, data);
+        lock (_lock) ReadInto(offset, data);
         return data;
     }
 
     public bool TryReadBlockData(long offset, int length, out byte[] data)
     {
         data = new byte[length];
-        return ReadInto(offset, data);
+        lock (_lock) return ReadInto(offset, data);
     }
 
     public void WriteBlockData(long offset, byte[] data)
     {
-        long position = 0;
-        int written = 0;
-
-        foreach (var file in Metainfo.Files)
+        lock (_lock)
         {
-            long fileEnd = position + file.Size;
+            long position = 0;
+            int written = 0;
 
-            if (written < data.Length && offset < fileEnd && offset + data.Length > position)
+            foreach (var file in Metainfo.Files)
             {
-                long fileOffset = Math.Max(0, offset - position);
-                int dataOffset = (int)Math.Max(0, position - offset);
-                int count = (int)Math.Min(file.Size - fileOffset, data.Length - dataOffset);
+                long fileEnd = position + file.Size;
 
-                var stream = _fileHandler.GetFileStream(file.Name);
-                if (stream.Length < fileOffset)
-                    stream.SetLength(fileOffset);
-                stream.Seek(fileOffset, SeekOrigin.Begin);
-                stream.Write(data, dataOffset, count);
-                written += count;
+                if (written < data.Length && offset < fileEnd && offset + data.Length > position)
+                {
+                    long fileOffset = Math.Max(0, offset - position);
+                    int dataOffset = (int)Math.Max(0, position - offset);
+                    int count = (int)Math.Min(file.Size - fileOffset, data.Length - dataOffset);
+
+                    var stream = _fileHandler.GetFileStream(file.Name);
+                    if (stream.Length < fileOffset)
+                        stream.SetLength(fileOffset);
+                    stream.Seek(fileOffset, SeekOrigin.Begin);
+                    stream.Write(data, dataOffset, count);
+                    written += count;
+                }
+
+                position += file.Size;
+                if (written >= data.Length) break;
             }
-
-            position += file.Size;
-            if (written >= data.Length) break;
         }
     }
 

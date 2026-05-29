@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using TorrentCs.Application;
 using TorrentCs.Application.BitTorrent;
+using TorrentCs.Application.BitTorrent.ExtensionModule;
 using TorrentCs.Application.BitTorrent.Pipelines;
 using TorrentCs.Application.Pipelines;
 using TorrentCs.Data;
@@ -53,6 +54,7 @@ public class TorrentClientBuilder
     public TorrentClientBuilder AddBitTorrentApplicationProtocol()
     {
         _services.AddSingleton<IModule, CoreMessagingModule>();
+        _services.AddSingleton<IModule, ExtensionProtocolModule>();
         _services.AddSingleton<IPiecePicker, PiecePicker>();
         _services.AddSingleton<IApplicationProtocolFactory>(sp =>
             new ApplicationProtocolFactory(

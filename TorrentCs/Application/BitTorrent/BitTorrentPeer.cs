@@ -138,9 +138,9 @@ public class BitTorrentPeer : IPeer, IChokablePeer
 
     public async Task ReceiveMessagesAsync(CancellationToken ct)
     {
+        const int MaxMessageLength = 1 << 20; // 1 MiB cap; anything larger is corrupt/hostile.
         var ns = _stream.Stream;
         var lengthBuf = new byte[4];
-        var reader = new BinaryReader(ns);
 
         while (!ct.IsCancellationRequested)
         {
@@ -151,9 +151,17 @@ public class BitTorrentPeer : IPeer, IChokablePeer
                              (lengthBuf[2] << 8) | lengthBuf[3];
 
                 if (length == 0) continue; // keep-alive
+                if (length < 1 || length > MaxMessageLength) break; // corrupt framing; drop the peer
 
                 byte id = (byte)ns.ReadByte();
-                _messageHandler?.MessageReceived(id, length, reader, this);
+
+                // Read the whole payload into a buffer and dispatch from there. This way a message
+                // whose id no module consumes (e.g. DHT port, Fast-extension ids) cannot desync the
+                // stream: we always advance exactly one message regardless of what gets read.
+                var payload = new byte[length - 1];
+                await ReadExactlyAsync(ns, payload, ct);
+                using var ms = new MemoryStream(payload, writable: false);
+                _messageHandler?.MessageReceived(id, length, new BinaryReader(ms), this);
             }
             catch (OperationCanceledException) { break; }
             catch { break; }

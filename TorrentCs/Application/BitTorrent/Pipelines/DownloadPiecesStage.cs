@@ -33,7 +33,12 @@ public class DownloadPiecesStage : IPipelineStage
         while (!interrupt.IsStopRequested)
         {
             if (!interrupt.IsPauseRequested)
-                Iterate(progress);
+            {
+                // A transient error with one peer (e.g. a dropped connection) must not abort the
+                // whole download; log it and carry on with the next iteration.
+                try { Iterate(progress); }
+                catch (Exception ex) { _logger.LogWarning("Download iteration error: {Reason}", ex.Message); }
+            }
 
             interrupt.InterruptHandle.WaitOne(IterationDelayMs);
         }

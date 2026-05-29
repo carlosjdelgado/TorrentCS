@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text;
 using TorrentCs.Application.BitTorrent.Messages;
 using TorrentCs.Data;
@@ -37,12 +38,21 @@ public class BitTorrentPeer : IPeer, IChokablePeer
 
     public void SendMessage(byte messageId, byte[] data)
     {
-        lock (_writer)
+        try
         {
-            _writer.Write(1 + data.Length); // length prefix
-            _stream.Stream.WriteByte(messageId);
-            _stream.Stream.Write(data, 0, data.Length);
-            _stream.Stream.Flush();
+            lock (_writer)
+            {
+                _writer.Write(1 + data.Length); // length prefix
+                _stream.Stream.WriteByte(messageId);
+                _stream.Stream.Write(data, 0, data.Length);
+                _stream.Stream.Flush();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            // The peer's connection is gone (reset/broken pipe/closed). Drop just this peer; the
+            // receive loop reports the disconnect. Never let one dead peer abort the whole download.
+            Disconnect();
         }
     }
 

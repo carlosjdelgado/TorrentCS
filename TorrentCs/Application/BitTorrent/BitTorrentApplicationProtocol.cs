@@ -175,7 +175,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
             await stream.Connect();
             var peer = new BitTorrentPeer(stream, Metainfo);
             await peer.PerformHandshakeAsync(Metainfo, _localPeerId, BuildReservedBytes(), isInitiator: true);
-            PeerConnected(peer, stream);
+            PeerConnected(peer, stream, incoming: false);
         }
         catch (Exception ex)
         {
@@ -197,7 +197,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
             var peer = new BitTorrentPeer(stream, Metainfo);
             peer.ApplyRemoteHandshake(reservedBytes, remotePeerId);
             await peer.SendHandshakeResponseAsync(Metainfo, _localPeerId, BuildReservedBytes());
-            PeerConnected(peer, stream);
+            PeerConnected(peer, stream, incoming: true);
         }
         catch (Exception ex)
         {
@@ -214,7 +214,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         return reserved;
     }
 
-    private void PeerConnected(BitTorrentPeer peer, ITransportStream stream)
+    private void PeerConnected(BitTorrentPeer peer, ITransportStream stream, bool incoming)
     {
         // Reject self-connections: a tracker may hand us back our own endpoint, and the handshake
         // then carries our own peer id. Connecting to ourselves would waste a connection slot.
@@ -233,7 +233,8 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
             module.OnPeerConnected(ctx);
 
         _ = peer.ReceiveMessagesAsync(CancellationToken.None);
-        _logger.LogDebug("Peer connected: {Address}", peer.Address);
+        _logger.LogDebug("Peer connected ({Direction}): {Address}",
+            incoming ? "incoming" : "outgoing", peer.Address);
     }
 
     private PeerContext BuildPeerContext(BitTorrentPeer peer)

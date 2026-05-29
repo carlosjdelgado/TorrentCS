@@ -58,6 +58,9 @@ public sealed class MonoNatPortForwarding : IPortForwarding
             port = p;
         }
 
+        _logger.LogInformation("Found NAT device via {Protocol}; mapping port {Port}",
+            e.Device.NatProtocol, port);
+
         try
         {
             var mapping = new Mapping(Protocol.Tcp, port, port);
@@ -67,7 +70,9 @@ public sealed class MonoNatPortForwarding : IPortForwarding
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to forward port {Port} via {Protocol}", port, e.Device.NatProtocol);
+            // Surface the failure reason at warning level so it's visible without -v.
+            _logger.LogWarning("Failed to forward port {Port} via {Protocol}: {Reason}",
+                port, e.Device.NatProtocol, ex.Message);
         }
     }
 

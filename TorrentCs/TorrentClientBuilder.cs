@@ -5,6 +5,7 @@ using TorrentCs.Application;
 using TorrentCs.Application.BitTorrent;
 using TorrentCs.Application.BitTorrent.Pipelines;
 using TorrentCs.Application.Pipelines;
+using TorrentCs.Data;
 using TorrentCs.Engine;
 using TorrentCs.Modularity;
 using TorrentCs.Tracker;
@@ -82,11 +83,12 @@ public class TorrentClientBuilder
             PublicAddress = System.Net.IPAddress.Any,
             BindAddress = System.Net.IPAddress.Any,
         });
-        // TryAdd so callers can override the tracker source via ConfigureServices (e.g. tests).
+        // TryAdd so callers can override these via ConfigureServices (e.g. tests).
         _services.TryAddSingleton<ITrackerClientFactory>(sp =>
             new TrackerClientFactory(
                 sp.GetRequiredService<ILoggerFactory>(),
                 sp.GetRequiredService<LocalTcpConnectionOptions>()));
+        _services.TryAddSingleton<IResumeStore, FileResumeStore>();
 
         var serviceProvider = _services.BuildServiceProvider();
         var pipelineFactory = _pipelineBuilder.Build(serviceProvider);

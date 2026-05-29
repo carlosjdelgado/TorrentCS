@@ -18,19 +18,23 @@ public class VerifyDownloadedPiecesStage : IPipelineStage
 
     public void Run(IStageInterrupt interrupt, IProgress<StatusUpdate> progress)
     {
-        var incomplete = _protocol.DataHandler.Metainfo.Pieces
-            .Except(_protocol.DataHandler.CompletedPieces).ToList();
+        var metainfo = _protocol.DataHandler.Metainfo;
 
-        if (incomplete.Count == 0)
+        // Pieces already marked complete (e.g. restored from resume data) are trusted and skipped.
+        var resumed = new HashSet<Piece>(_protocol.DataHandler.CompletedPieces);
+
+        if (resumed.Count == metainfo.Pieces.Count)
         {
-            _logger.LogDebug("No pieces to verify — starting fresh");
+            _logger.LogInformation("All {Total} pieces restored from resume data", metainfo.Pieces.Count);
+            progress.Report(new StatusUpdate(DownloadState.Downloading, 1.0));
             return;
         }
 
-        HashAndMarkPieces(interrupt, progress);
+        HashAndMarkPieces(interrupt, progress, resumed);
     }
 
-    private void HashAndMarkPieces(IStageInterrupt interrupt, IProgress<StatusUpdate> progress)
+    private void HashAndMarkPieces(
+        IStageInterrupt interrupt, IProgress<StatusUpdate> progress, HashSet<Piece> alreadyComplete)
     {
         var metainfo = _protocol.DataHandler.Metainfo;
         int total = metainfo.Pieces.Count;
@@ -43,12 +47,15 @@ public class VerifyDownloadedPiecesStage : IPipelineStage
             while (interrupt.IsPauseRequested)
                 Thread.Sleep(50);
 
-            long offset = metainfo.PieceOffset(piece);
-            if (_protocol.DataHandler.TryReadBlockData(offset, piece.Size, out var data))
+            if (!alreadyComplete.Contains(piece))
             {
-                var hash = new Sha1Hash(SHA1.HashData(data));
-                if (hash == piece.Hash)
-                    _protocol.DataHandler.MarkPieceAsCompleted(piece);
+                long offset = metainfo.PieceOffset(piece);
+                if (_protocol.DataHandler.TryReadBlockData(offset, piece.Size, out var data))
+                {
+                    var hash = new Sha1Hash(SHA1.HashData(data));
+                    if (hash == piece.Hash)
+                        _protocol.DataHandler.MarkPieceAsCompleted(piece);
+                }
             }
 
             verified++;
@@ -56,6 +63,8 @@ public class VerifyDownloadedPiecesStage : IPipelineStage
         }
 
         int completed = _protocol.DataHandler.CompletedPieces.Count;
-        _logger.LogInformation("{Completed}/{Total} pieces already downloaded", completed, total);
+        _logger.LogInformation(
+            "{Completed}/{Total} pieces already downloaded ({Resumed} restored from resume)",
+            completed, total, alreadyComplete.Count);
     }
 }

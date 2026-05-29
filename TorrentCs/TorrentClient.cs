@@ -19,8 +19,10 @@ public class TorrentClient : ITorrentClient
     private readonly ITrackerClientFactory _trackerClientFactory;
     private readonly IApplicationProtocolFactory _applicationProtocolFactory;
     private readonly IPipelineFactory _pipelineFactory;
+    private readonly IResumeStore _resumeStore;
     private readonly Dictionary<Sha1Hash, TorrentDownload> _downloads = [];
     private readonly List<IApplicationProtocol> _protocols = [];
+    private readonly List<ResumePersister> _resumePersisters = [];
 
     public TorrentClient(
         ILogger<TorrentClient> logger,
@@ -29,7 +31,8 @@ public class TorrentClient : ITorrentClient
         ITrackerClientFactory trackerClientFactory,
         IApplicationProtocolFactory applicationProtocolFactory,
         PeerId localPeerId,
-        IPipelineFactory pipelineFactory)
+        IPipelineFactory pipelineFactory,
+        IResumeStore resumeStore)
     {
         _logger = logger;
         _mainLoop = mainLoop;
@@ -38,6 +41,7 @@ public class TorrentClient : ITorrentClient
         _applicationProtocolFactory = applicationProtocolFactory;
         LocalPeerId = localPeerId;
         _pipelineFactory = pipelineFactory;
+        _resumeStore = resumeStore;
 
         _transport.AcceptConnectionHandler += OnIncomingConnection;
         _mainLoop.Start();
@@ -70,6 +74,8 @@ public class TorrentClient : ITorrentClient
         var protocol = _applicationProtocolFactory.Create(metainfo, dataHandler);
         _protocols.Add(protocol);
 
+        RestoreResume(metainfo, protocol, downloadDirectory);
+
         var tracker = new AggregatedTracker(_trackerClientFactory, metainfo.Trackers);
         var pipeline = _pipelineFactory.CreatePipeline(protocol);
 
@@ -84,11 +90,28 @@ public class TorrentClient : ITorrentClient
     public void Dispose()
     {
         _transport.AcceptConnectionHandler -= OnIncomingConnection;
+        foreach (var persister in _resumePersisters)
+            persister.Dispose(); // flushes the final resume state to disk
         foreach (var download in _downloads.Values)
             download.Stop();
         _transport.Stop();
         _mainLoop.Stop();
         GC.SuppressFinalize(this);
+    }
+
+    private void RestoreResume(Metainfo metainfo, IApplicationProtocol protocol, string downloadDirectory)
+    {
+        var resume = _resumeStore.Load(downloadDirectory, metainfo.InfoHash, metainfo.Pieces.Count);
+        if (resume is not null)
+        {
+            foreach (var index in resume.CompletedPieces)
+                protocol.DataHandler.MarkPieceAsCompleted(metainfo.Pieces[index]);
+            _logger.LogInformation("Restored {Count} pieces from resume data for {Name}",
+                resume.CompletedPieces.Count, metainfo.Name);
+        }
+
+        // Subscribe after restoring so the restored pieces don't trigger a redundant first save.
+        _resumePersisters.Add(new ResumePersister(_resumeStore, protocol.DataHandler, downloadDirectory));
     }
 
     private void OnIncomingConnection(AcceptConnectionEventArgs args)

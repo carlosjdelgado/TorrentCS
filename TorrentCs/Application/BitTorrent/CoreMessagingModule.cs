@@ -47,11 +47,17 @@ public class CoreMessagingModule : IModule
                 peer.IsInterestedInRemotePeer = false;
                 break;
             case HaveMessage have when have.Piece is not null:
-                peer.Available.SetPieceAvailable(have.Piece.Index, true);
-                UpdateInterest(context, peer);
+                // Guard against out-of-range indices: a malformed peer, or our own bitfield being
+                // empty while we have no metainfo yet (BEP 9 metadata-fetch phase).
+                if (have.Piece.Index >= 0 && have.Piece.Index < peer.Available.PieceCount)
+                {
+                    peer.Available.SetPieceAvailable(have.Piece.Index, true);
+                    UpdateInterest(context, peer);
+                }
                 break;
             case BitfieldMessage bf when bf.Bitfield is not null:
-                for (int i = 0; i < bf.Bitfield.PieceCount; i++)
+                int count = Math.Min(bf.Bitfield.PieceCount, peer.Available.PieceCount);
+                for (int i = 0; i < count; i++)
                     peer.Available.SetPieceAvailable(i, bf.Bitfield.IsPieceAvailable(i));
                 UpdateInterest(context, peer);
                 break;

@@ -9,13 +9,23 @@ public static class TorrentParser
 {
     public static Metainfo ReadFromStream(Stream stream)
     {
-        var parser = new BencodeParser();
-        var torrent = parser.Parse<BDictionary>(stream);
+        var torrent = new BencodeParser().Parse<BDictionary>(stream);
         var info = (BDictionary)torrent["info"];
 
         using var infoStream = new MemoryStream();
         info.EncodeTo(infoStream);
         var rawInfoDict = infoStream.ToArray();
+
+        return BuildFromInfoDictionary(rawInfoDict, ParseTrackers(torrent));
+    }
+
+    /// <summary>
+    /// Builds a metainfo from the raw bencoded <c>info</c> dictionary (as obtained via BEP 9
+    /// metadata exchange) plus the trackers known out-of-band (e.g. from a magnet link).
+    /// </summary>
+    public static Metainfo BuildFromInfoDictionary(byte[] rawInfoDict, IEnumerable<string> trackers)
+    {
+        var info = new BencodeParser().Parse<BDictionary>(new MemoryStream(rawInfoDict));
         var infoHash = new Sha1Hash(SHA1.HashData(rawInfoDict));
 
         var name = ((BString)info["name"]).ToString();
@@ -24,7 +34,6 @@ public static class TorrentParser
 
         var files = ParseFiles(info, name);
         var pieces = BuildPieces(piecesRaw, pieceSize, files.Sum(f => f.Size));
-        var trackers = ParseTrackers(torrent);
 
         return new Metainfo(name, infoHash, files, pieces, pieceSize, trackers, rawInfoDict);
     }

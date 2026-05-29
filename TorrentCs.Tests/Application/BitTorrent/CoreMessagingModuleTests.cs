@@ -97,6 +97,43 @@ public class CoreMessagingModuleTests
         Assert.False(harness.Peer.IsChokedByRemotePeer);
     }
 
+    [Fact]
+    public void OnMessageReceived_HaveWithEmptyMetainfo_DoesNotThrow()
+    {
+        // During the BEP 9 metadata-fetch phase our metainfo has no pieces, so our bitfield is empty.
+        var harness = new Harness(pieceCount: 0);
+
+        using var ms = new MemoryStream();
+        new BigEndianBinaryWriter(ms).Write(5); // peer claims to have piece 5
+        var ex = Record.Exception(() => harness.Receive(HaveMessage.MessageID, ms.ToArray()));
+
+        Assert.Null(ex);
+        Assert.DoesNotContain(harness.SentMessages, m => m.Id == InterestedMessage.MessageID);
+    }
+
+    [Fact]
+    public void OnMessageReceived_HaveOutOfRange_Ignored()
+    {
+        var harness = new Harness(pieceCount: 4);
+
+        using var ms = new MemoryStream();
+        new BigEndianBinaryWriter(ms).Write(99); // out of range for a 4-piece torrent
+        var ex = Record.Exception(() => harness.Receive(HaveMessage.MessageID, ms.ToArray()));
+
+        Assert.Null(ex);
+        Assert.False(harness.Peer.IsInterestedInPeer);
+    }
+
+    [Fact]
+    public void OnMessageReceived_BitfieldWithEmptyMetainfo_DoesNotThrow()
+    {
+        var harness = new Harness(pieceCount: 0);
+
+        var ex = Record.Exception(() => harness.Receive(BitfieldMessage.MessageID, [0xFF, 0xFF]));
+
+        Assert.Null(ex);
+    }
+
     // ─── Harness ─────────────────────────────────────────────────────────────
 
     private sealed class Harness

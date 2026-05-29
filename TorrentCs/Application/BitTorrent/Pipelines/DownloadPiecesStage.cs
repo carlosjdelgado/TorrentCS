@@ -10,7 +10,7 @@ namespace TorrentCs.Application.BitTorrent.Pipelines;
 
 public class DownloadPiecesStage : IPipelineStage
 {
-    private const int MaxConnectedPeers = 5;
+    private const int MaxConnectedPeers = 50;
     private const int IterationDelayMs = 100;
     private static readonly TimeSpan BlockRequestTimeout = TimeSpan.FromSeconds(30);
 

@@ -5,6 +5,8 @@ namespace TorrentCs.Transport.Tcp;
 
 public class TcpTransportStream : ITransportStream
 {
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(8);
+
     private readonly IPAddress? _remoteAddress;
     private readonly int _port;
     private readonly TcpClient _client;
@@ -46,7 +48,10 @@ public class TcpTransportStream : ITransportStream
         {
             if (IsConnected || IsConnecting) return;
             IsConnecting = true;
-            await _client.ConnectAsync(_remoteAddress!, _port);
+            // Time out unresponsive peers (filtered / behind NAT / dead) so they don't hold a
+            // connection slot indefinitely while hundreds of other peers go untried.
+            using var cts = new CancellationTokenSource(ConnectTimeout);
+            await _client.ConnectAsync(_remoteAddress!, _port, cts.Token);
             RemoteEndPoint = (IPEndPoint)_client.Client.RemoteEndPoint!;
             Stream = new RateLimitedStream(_client.GetStream(), new RateLimiter());
         }

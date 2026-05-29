@@ -10,7 +10,7 @@ namespace TorrentCs.Application.BitTorrent.Pipelines;
 /// </summary>
 public class FetchMetadataStage : IPipelineStage
 {
-    private const int MaxConnectedPeers = 5;
+    private const int MaxConnectedPeers = 50;
     private const int IterationDelayMs = 200;
 
     private readonly ILogger<FetchMetadataStage> _logger;

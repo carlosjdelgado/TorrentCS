@@ -21,6 +21,7 @@ public class TorrentClient : ITorrentClient
     private readonly IApplicationProtocolFactory _applicationProtocolFactory;
     private readonly IPipelineFactory _pipelineFactory;
     private readonly IResumeStore _resumeStore;
+    private readonly IPortForwarding _portForwarding;
     private readonly Dictionary<Sha1Hash, TorrentDownload> _downloads = [];
     private readonly ConcurrentDictionary<Sha1Hash, IApplicationProtocol> _protocolsByInfoHash = new();
     private readonly List<ResumePersister> _resumePersisters = [];
@@ -33,7 +34,8 @@ public class TorrentClient : ITorrentClient
         IApplicationProtocolFactory applicationProtocolFactory,
         PeerId localPeerId,
         IPipelineFactory pipelineFactory,
-        IResumeStore resumeStore)
+        IResumeStore resumeStore,
+        IPortForwarding portForwarding)
     {
         _logger = logger;
         _mainLoop = mainLoop;
@@ -43,10 +45,12 @@ public class TorrentClient : ITorrentClient
         LocalPeerId = localPeerId;
         _pipelineFactory = pipelineFactory;
         _resumeStore = resumeStore;
+        _portForwarding = portForwarding;
 
         _transport.AcceptConnectionHandler += OnIncomingConnection;
         _mainLoop.Start();
         _transport.Start();
+        _portForwarding.MapPort(_transport.Port);
     }
 
     public PeerId LocalPeerId { get; }
@@ -91,6 +95,7 @@ public class TorrentClient : ITorrentClient
     public void Dispose()
     {
         _transport.AcceptConnectionHandler -= OnIncomingConnection;
+        _portForwarding.Dispose(); // removes the router port mapping
         foreach (var persister in _resumePersisters)
             persister.Dispose(); // flushes the final resume state to disk
         foreach (var download in _downloads.Values)

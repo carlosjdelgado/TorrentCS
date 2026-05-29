@@ -19,6 +19,7 @@ pluggable — while targeting current .NET runtimes.
 - SHA-1 verification of every downloaded piece
 - Choking / optimistic-unchoke with tit-for-tat upload slot management
 - Fast resume — persists verified pieces to skip re-hashing on restart
+- Optional UPnP / NAT-PMP port forwarding (via Mono.Nat)
 - Periodic re-announce, `numwant` and `event` reporting
 - Fully modular, dependency-injection based architecture
 
@@ -97,6 +98,7 @@ Options:
   -o, --output <dir>    Directory to save downloaded files to (default: current directory).
   -p, --port <port>     Port to listen on for incoming connections (default: 5000).
   -v, --verbose         Enable verbose (debug) logging.
+      --upnp            Forward the listen port on the router via UPnP / NAT-PMP.
 ```
 
 Example:
@@ -133,7 +135,7 @@ Planned features, in rough priority order:
 1. [x] **Choking / optimistic-unchoke** algorithm and upload management
 2. [x] **Resume support** — persist piece state to avoid re-hashing on restart
 3. [x] **Route incoming connections** across multiple torrents by info-hash
-4. [ ] **UPnP port forwarding** — automatically open the listen port on the router
+4. [x] **UPnP port forwarding** — automatically open the listen port on the router
 5. [ ] **Extension protocol** ([BEP 10](https://www.bittorrent.org/beps/bep_0010.html)) — the foundation for most modern extensions
 6. [ ] **Peer exchange / PEX** ([BEP 11](https://www.bittorrent.org/beps/bep_0011.html)) — discover peers from other peers
 7. [ ] **Metadata exchange** ([BEP 9](https://www.bittorrent.org/beps/bep_0009.html)) — fetch the `info` dictionary from peers

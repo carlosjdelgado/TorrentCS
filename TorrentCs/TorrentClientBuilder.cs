@@ -9,6 +9,7 @@ using TorrentCs.Data;
 using TorrentCs.Engine;
 using TorrentCs.Modularity;
 using TorrentCs.Tracker;
+using TorrentCs.Transport;
 using TorrentCs.Transport.Tcp;
 
 namespace TorrentCs;
@@ -69,6 +70,16 @@ public class TorrentClientBuilder
         return this;
     }
 
+    /// <summary>
+    /// Enables UPnP / NAT-PMP port forwarding so the listen port is opened on the home router.
+    /// Disabled by default.
+    /// </summary>
+    public TorrentClientBuilder UsePortForwarding()
+    {
+        _services.AddSingleton<IPortForwarding, MonoNatPortForwarding>();
+        return this;
+    }
+
     public TorrentClientBuilder ConfigureServices(Action<IServiceCollection> configure)
     {
         configure(_services);
@@ -89,6 +100,7 @@ public class TorrentClientBuilder
                 sp.GetRequiredService<ILoggerFactory>(),
                 sp.GetRequiredService<LocalTcpConnectionOptions>()));
         _services.TryAddSingleton<IResumeStore, FileResumeStore>();
+        _services.TryAddSingleton<IPortForwarding, NullPortForwarding>(); // off unless UsePortForwarding()
 
         var serviceProvider = _services.BuildServiceProvider();
         var pipelineFactory = _pipelineBuilder.Build(serviceProvider);

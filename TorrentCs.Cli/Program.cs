@@ -20,6 +20,11 @@ var verboseOption = new Option<bool>("--verbose", "-v")
     Description = "Enable verbose (debug) logging.",
 };
 
+var upnpOption = new Option<bool>("--upnp")
+{
+    Description = "Forward the listen port on the router via UPnP / NAT-PMP.",
+};
+
 var inputArgument = new Argument<string>("input")
 {
     Description = "Path to the .torrent file to download.",
@@ -29,6 +34,7 @@ var rootCommand = new RootCommand("TorrentCs — a command-line BitTorrent clien
 rootCommand.Add(portOption);
 rootCommand.Add(outputOption);
 rootCommand.Add(verboseOption);
+rootCommand.Add(upnpOption);
 rootCommand.Add(inputArgument);
 
 rootCommand.SetAction(async (parseResult, ct) =>
@@ -36,14 +42,16 @@ rootCommand.SetAction(async (parseResult, ct) =>
     int port = parseResult.GetValue(portOption);
     string output = parseResult.GetValue(outputOption)!;
     bool verbose = parseResult.GetValue(verboseOption);
+    bool upnp = parseResult.GetValue(upnpOption);
     string input = parseResult.GetValue(inputArgument)!;
 
-    return await RunAsync(input, output, port, verbose, ct);
+    return await RunAsync(input, output, port, verbose, upnp, ct);
 });
 
 return await rootCommand.Parse(args).InvokeAsync();
 
-static async Task<int> RunAsync(string input, string output, int port, bool verbose, CancellationToken ct)
+static async Task<int> RunAsync(
+    string input, string output, int port, bool verbose, bool upnp, CancellationToken ct)
 {
     if (!File.Exists(input))
     {
@@ -55,12 +63,15 @@ static async Task<int> RunAsync(string input, string output, int port, bool verb
 
     var logLevel = verbose ? LogLevel.Debug : LogLevel.Information;
 
-    using var client = TorrentClientBuilder.CreateDefaultBuilder()
+    var builder = TorrentClientBuilder.CreateDefaultBuilder()
         .UsePort(port)
         .ConfigureServices(services =>
             services.AddLogging(b => b.AddSimpleConsole(o => o.SingleLine = true)
-                                      .SetMinimumLevel(logLevel)))
-        .Build();
+                                      .SetMinimumLevel(logLevel)));
+    if (upnp)
+        builder.UsePortForwarding();
+
+    using var client = builder.Build();
 
     var download = client.Add(input, output);
 

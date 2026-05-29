@@ -9,6 +9,7 @@ using TorrentCs.Data;
 using TorrentCs.Engine;
 using TorrentCs.Extensions.ExtensionProtocol;
 using TorrentCs.Extensions.PeerExchange;
+using TorrentCs.Extensions.SendMetadata;
 using TorrentCs.Modularity;
 using TorrentCs.Tracker;
 using TorrentCs.Transport;
@@ -57,6 +58,7 @@ public class TorrentClientBuilder
         _services.AddSingleton<IModule, CoreMessagingModule>();
         _services.AddSingleton<IModule, ExtensionProtocolModule>();
         _services.AddSingleton<IExtensionProtocolMessageHandler, PeerExchangeMessageHandler>();
+        _services.AddSingleton<IExtensionProtocolMessageHandler, MetadataMessageHandler>();
         _services.AddSingleton<IPiecePicker, PiecePicker>();
         _services.AddSingleton<IApplicationProtocolFactory>(sp =>
             new ApplicationProtocolFactory(

@@ -74,7 +74,7 @@ public class ExtensionProtocolModule : IModule
         };
         var content = handshake.Serialize();
 
-        var prepareContext = new PrepareExtensionProtocolHandshakeContext(content);
+        var prepareContext = new PrepareExtensionProtocolHandshakeContext(content, context.Metainfo);
         foreach (var handler in _handlers)
             handler.PrepareExtensionProtocolHandshake(prepareContext);
 

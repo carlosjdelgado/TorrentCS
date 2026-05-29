@@ -176,7 +176,8 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to connect to {Address}", stream.DisplayAddress);
+            // Unreachable/unresponsive peers are normal in a public swarm; log the reason, not a stack.
+            _logger.LogDebug("Failed to connect to {Address}: {Reason}", stream.DisplayAddress, ex.Message);
         }
         finally
         {
@@ -197,7 +198,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to accept connection from {Address}", stream.DisplayAddress);
+            _logger.LogDebug("Failed to accept connection from {Address}: {Reason}", stream.DisplayAddress, ex.Message);
         }
     }
 

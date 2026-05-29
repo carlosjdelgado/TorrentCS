@@ -94,8 +94,17 @@ static async Task<int> RunAsync(
 
     try
     {
-        await download.WaitForDownloadCompletionAsync();
+        // Wait for completion while honouring Ctrl-C / termination so we shut down cleanly.
+        while (download.State is not (DownloadState.Completed or DownloadState.Failed))
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+
         LogStatus(download);
+        if (download.State == DownloadState.Failed)
+        {
+            Console.Error.WriteLine("Download failed.");
+            return 1;
+        }
+
         Console.WriteLine("Download completed.");
         return 0;
     }

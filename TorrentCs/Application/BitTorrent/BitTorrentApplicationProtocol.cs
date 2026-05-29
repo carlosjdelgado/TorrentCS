@@ -119,19 +119,6 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         _chokingManager.Update(snapshot);
     }
 
-    public void Tick()
-    {
-        List<BitTorrentPeer> snapshot;
-        lock (_peersLock) snapshot = [.. _peers];
-
-        foreach (var peer in snapshot)
-        {
-            var context = BuildPeerContext(peer);
-            foreach (var module in _modules)
-                module.OnTick(context);
-        }
-    }
-
     public void MessageReceived(byte messageId, int length, BinaryReader reader, BitTorrentPeer peer)
     {
         var peerCtx = BuildPeerContext(peer);

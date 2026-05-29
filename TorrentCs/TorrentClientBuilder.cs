@@ -3,11 +3,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using TorrentCs.Application;
 using TorrentCs.Application.BitTorrent;
-using TorrentCs.Application.BitTorrent.ExtensionModule;
 using TorrentCs.Application.BitTorrent.Pipelines;
 using TorrentCs.Application.Pipelines;
 using TorrentCs.Data;
 using TorrentCs.Engine;
+using TorrentCs.Extensions.ExtensionProtocol;
+using TorrentCs.Extensions.PeerExchange;
 using TorrentCs.Modularity;
 using TorrentCs.Tracker;
 using TorrentCs.Transport;
@@ -55,7 +56,7 @@ public class TorrentClientBuilder
     {
         _services.AddSingleton<IModule, CoreMessagingModule>();
         _services.AddSingleton<IModule, ExtensionProtocolModule>();
-        _services.AddSingleton<IBitTorrentExtension, PexExtension>();
+        _services.AddSingleton<IExtensionProtocolMessageHandler, PeerExchangeMessageHandler>();
         _services.AddSingleton<IPiecePicker, PiecePicker>();
         _services.AddSingleton<IApplicationProtocolFactory>(sp =>
             new ApplicationProtocolFactory(

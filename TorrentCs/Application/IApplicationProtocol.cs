@@ -30,7 +30,4 @@ public interface IApplicationProtocol
 
     /// <summary>Recalculates which peers are choked/unchoked. Called periodically by the engine.</summary>
     void UpdateChoking();
-
-    /// <summary>Runs periodic per-peer maintenance (e.g. PEX gossip). Called periodically by the engine.</summary>
-    void Tick();
 }

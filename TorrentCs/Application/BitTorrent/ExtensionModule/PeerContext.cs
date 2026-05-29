@@ -23,7 +23,8 @@ public class PeerContext : IPeerContext
 
     public IPeer Peer { get; }
 
-    public T GetValue<T>(string key) => (T)((BitTorrentPeer)Peer).Values[key];
+    public T GetValue<T>(string key) =>
+        ((BitTorrentPeer)Peer).Values.TryGetValue(key, out var value) ? (T)value : default!;
     public void SetValue<T>(string key, T value) => ((BitTorrentPeer)Peer).Values[key] = value!;
     public void RegisterMessageHandler(byte messageId) => _registerHandler(messageId);
 

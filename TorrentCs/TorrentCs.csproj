@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="TorrentCs.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="BencodeNET" Version="3.0.1" />
     <PackageReference Include="Mono.Nat" Version="3.0.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />

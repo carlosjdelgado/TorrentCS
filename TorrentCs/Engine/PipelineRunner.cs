@@ -65,7 +65,6 @@ public class PipelineRunner : ITorrentPipelineRunner
         _statisticsTask = _mainLoop.AddRegularTask(UpdateStatistics);
         _ = TrackerLoopAsync(_trackerCts.Token);
         _ = ChokingLoopAsync(_trackerCts.Token);
-        _ = TickLoopAsync(_trackerCts.Token);
         _ = Task.Run(() =>
         {
             var progress = new Progress<StatusUpdate>(u =>
@@ -114,17 +113,6 @@ public class PipelineRunner : ITorrentPipelineRunner
             _mainLoop.AddTask(_protocol.UpdateChoking);
             try { await Task.Delay(TimeSpan.FromSeconds(10), ct); }
             catch (OperationCanceledException) { break; }
-        }
-    }
-
-    private async Task TickLoopAsync(CancellationToken ct)
-    {
-        // Periodic per-peer maintenance (e.g. PEX gossip), roughly once a minute.
-        while (!ct.IsCancellationRequested)
-        {
-            try { await Task.Delay(TimeSpan.FromSeconds(60), ct); }
-            catch (OperationCanceledException) { break; }
-            _mainLoop.AddTask(_protocol.Tick);
         }
     }
 

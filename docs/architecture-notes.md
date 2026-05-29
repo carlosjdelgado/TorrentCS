@@ -62,7 +62,3 @@ connection.
   is no way to pick a subset or set priorities.
 - **Rate limiting is not exposed.** `RateLimiter` / `RateLimitedStream` exist and are wired into the
   transport, but there is no public API to configure upload/download speed caps.
-- **PEX sends the full peer list, not deltas.** `PexExtension` (BEP 11) gossips peers in both
-  directions, but on each tick it sends the full list of connected peers as `added` rather than the
-  added/dropped delta since the last message. This is simpler and harmless (receivers deduplicate),
-  but sending true deltas (and `dropped`) would be tidier.

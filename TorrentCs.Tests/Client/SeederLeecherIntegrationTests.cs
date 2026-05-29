@@ -57,7 +57,8 @@ public class SeederLeecherIntegrationTests : IDisposable
         _seeder = TorrentClientBuilder.CreateDefaultBuilder()
             .UsePort(SeederPort)
             .Build();
-        _seeder.Add(metainfo, seederDir).Start();
+        var seederDownload = _seeder.Add(metainfo, seederDir);
+        seederDownload.Start();
 
         // Give the seeder a moment to verify its pieces and start listening.
         await Task.Delay(500);
@@ -87,6 +88,10 @@ public class SeederLeecherIntegrationTests : IDisposable
         var downloaded = await File.ReadAllBytesAsync(downloadedPath);
         Assert.Equal(original.Length, downloaded.Length);
         Assert.Equal(SHA1.HashData(original), SHA1.HashData(downloaded));
+
+        // 6. The seeder must have accounted for the bytes it uploaded (at least the whole file).
+        Assert.True(seederDownload.Uploaded >= original.Length,
+            $"seeder should have recorded its upload, but Uploaded was {seederDownload.Uploaded}");
     }
 
     // ─── Stub tracker: always returns the seeder as the only peer ────────────────

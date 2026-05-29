@@ -98,6 +98,40 @@ public class CoreMessagingModuleTests
     }
 
     [Fact]
+    public void OnMessageReceived_RequestWhileUnchoked_ServesBlockAndRecordsUpload()
+    {
+        var harness = new Harness(pieceCount: 4);
+        harness.Peer.IsChokingRemotePeer = false; // we are serving this peer
+
+        // request body: pieceIndex(4BE) + offset(4BE) + length(4BE)
+        using var ms = new MemoryStream();
+        var be = new BigEndianBinaryWriter(ms);
+        be.Write(0);
+        be.Write(0);
+        be.Write(16);
+        harness.Receive(RequestMessage.MessageID, ms.ToArray());
+
+        Assert.Contains(harness.SentMessages, m => m.Id == PieceMessage.MessageID);
+        Assert.Equal(16, harness.Context.UploadedBytes);
+    }
+
+    [Fact]
+    public void OnMessageReceived_RequestWhileChoking_DoesNotServeOrRecord()
+    {
+        var harness = new Harness(pieceCount: 4); // peer starts choked by us
+
+        using var ms = new MemoryStream();
+        var be = new BigEndianBinaryWriter(ms);
+        be.Write(0);
+        be.Write(0);
+        be.Write(16);
+        harness.Receive(RequestMessage.MessageID, ms.ToArray());
+
+        Assert.DoesNotContain(harness.SentMessages, m => m.Id == PieceMessage.MessageID);
+        Assert.Equal(0, harness.Context.UploadedBytes);
+    }
+
+    [Fact]
     public void OnMessageReceived_HaveWithEmptyMetainfo_DoesNotThrow()
     {
         // During the BEP 9 metadata-fetch phase our metainfo has no pieces, so our bitfield is empty.
@@ -148,7 +182,8 @@ public class CoreMessagingModuleTests
                 .WithPieceSize(16)
                 .Build();
 
-            var fileHandler = new MemoryFileHandler();
+            // Preload the file so the seeder can actually read and serve blocks.
+            var fileHandler = new MemoryFileHandler("f.bin", fileData);
             var dataHandler = new PieceCheckerHandler(
                 new BlockDataHandler(fileHandler, Metainfo), Metainfo);
 
@@ -204,7 +239,10 @@ public class CoreMessagingModuleTests
         public IBlockRequests BlockRequests => _h.BlockRequests;
         public IReadOnlyCollection<IPeer> Peers => [_h.Peer];
 
+        public long UploadedBytes { get; private set; }
+
         public void SendMessage(byte messageId, byte[] data) => _h.SentMessages.Add((messageId, data));
+        public void RecordUploaded(long bytes) => UploadedBytes += bytes;
         public T GetValue<T>(string key) => (T)_h.Peer.Values[key];
         public void SetValue<T>(string key, T value) => _h.Peer.Values[key] = value!;
         public void RegisterMessageHandler(byte messageId) { }

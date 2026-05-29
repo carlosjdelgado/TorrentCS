@@ -119,5 +119,6 @@ public class CoreMessagingModule : IModule
         be.Write(request.Offset);
         ms.Write(data);
         context.SendMessage(PieceMessage.MessageID, ms.ToArray());
+        context.RecordUploaded(data.Length);
     }
 }

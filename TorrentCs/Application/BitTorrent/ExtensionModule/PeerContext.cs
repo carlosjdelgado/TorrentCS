@@ -38,4 +38,5 @@ public class PeerContext : IPeerContext
     public IBlockRequests BlockRequests => _torrentContext.BlockRequests;
     public void PeersAvailable(IEnumerable<ITransportStream> peers) =>
         _torrentContext.PeersAvailable(peers);
+    public void RecordUploaded(long bytes) => _torrentContext.RecordUploaded(bytes);
 }

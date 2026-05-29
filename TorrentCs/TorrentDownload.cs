@@ -51,6 +51,9 @@ public sealed class TorrentDownload
     public Metainfo Description => _runner?.Description ?? _description;
     public DownloadState State => _runner?.State ?? _metadataState;
     public double Progress => _runner?.DownloadProgress ?? 0;
+
+    /// <summary>Total bytes uploaded to peers so far.</summary>
+    public long Uploaded => _runner?.Uploaded ?? 0;
     public IReadOnlyCollection<ITrackerDetails> Trackers => _tracker.Trackers;
 
     /// <summary>

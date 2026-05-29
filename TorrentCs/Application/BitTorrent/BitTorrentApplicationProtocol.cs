@@ -42,7 +42,8 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
     public Metainfo Metainfo { get; }
     public IPieceDataHandler DataHandler { get; }
     public IBlockRequests BlockRequests { get; }
-    public long Uploaded { get; private set; }
+    private long _uploaded;
+    public long Uploaded => Interlocked.Read(ref _uploaded);
 
     public IReadOnlyCollection<object> Peers
     {
@@ -66,6 +67,8 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
     }
 
     void ITorrentContext.PeersAvailable(IEnumerable<ITransportStream> peers) => PeersAvailable(peers);
+
+    public void RecordUploaded(long bytes) => Interlocked.Add(ref _uploaded, bytes);
 
     public void PeersAvailable(IEnumerable<ITransportStream> peers)
     {

@@ -23,6 +23,26 @@ public class PieceCheckerHandlerTests
     }
 
     [Fact]
+    public void WriteBlockData_DuplicateBlock_DoesNotBreakCompletion()
+    {
+        // A re-requested block can arrive twice; the duplicate must not prevent the piece completing.
+        var fileData = new byte[256];
+        new Random(9).NextBytes(fileData);
+        var (meta, checker, fh) = Build(fileData, 256);
+        using (fh)
+        {
+            Piece? completed = null;
+            checker.PieceCompleted += p => completed = p;
+
+            checker.WriteBlockData(0, fileData[..128]);
+            checker.WriteBlockData(0, fileData[..128]); // duplicate of the first block
+            checker.WriteBlockData(128, fileData[128..]);
+
+            Assert.NotNull(completed);
+        }
+    }
+
+    [Fact]
     public void WriteBlockData_CorruptData_FiresPieceCorrupted()
     {
         var fileData = new byte[256];

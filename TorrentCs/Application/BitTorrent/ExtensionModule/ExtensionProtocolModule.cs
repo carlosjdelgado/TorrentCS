@@ -2,6 +2,7 @@ using BencodeNET.Objects;
 using BencodeNET.Parsing;
 using Microsoft.Extensions.Logging;
 using TorrentCs.Modularity;
+using TorrentCs.Transport.Tcp;
 
 namespace TorrentCs.Application.BitTorrent.ExtensionModule;
 
@@ -18,19 +19,26 @@ public class ExtensionProtocolModule : IModule
     /// <summary>The peer-state key under which the peer's advertised extensions are stored.</summary>
     public const string PeerExtensionsKey = "bep10.peer_extensions";
 
+    /// <summary>The peer-state key under which the peer's advertised TCP listen port ("p") is stored.</summary>
+    public const string PeerListenPortKey = "bep10.peer_port";
+
     private const byte HandshakeExtensionId = 0;
     private const byte ExtensionBit = 0x10; // reserved[5] & 0x10
 
     private readonly ILogger<ExtensionProtocolModule> _logger;
     private readonly IReadOnlyList<IBitTorrentExtension> _extensions;
+    private readonly LocalTcpConnectionOptions _connectionOptions;
     private readonly Dictionary<byte, IBitTorrentExtension> _byLocalId = [];
     private readonly Dictionary<string, byte> _localIds = [];
 
     public ExtensionProtocolModule(
-        ILogger<ExtensionProtocolModule> logger, IEnumerable<IBitTorrentExtension> extensions)
+        ILogger<ExtensionProtocolModule> logger,
+        IEnumerable<IBitTorrentExtension> extensions,
+        LocalTcpConnectionOptions connectionOptions)
     {
         _logger = logger;
         _extensions = extensions.ToList();
+        _connectionOptions = connectionOptions;
 
         byte id = 1;
         foreach (var ext in _extensions)
@@ -52,6 +60,16 @@ public class ExtensionProtocolModule : IModule
 
         context.RegisterMessageHandler(ExtendedMessageId);
         SendExtendedHandshake(context);
+    }
+
+    public void OnTick(IPeerContext context)
+    {
+        var peer = (BitTorrentPeer)context.Peer;
+        if (!peer.SupportedExtensions.HasFlag(ProtocolExtension.ExtensionProtocol))
+            return;
+
+        foreach (var extension in _extensions)
+            extension.OnTick(context);
     }
 
     public void OnMessageReceived(IMessageReceivedContext context)
@@ -82,6 +100,9 @@ public class ExtensionProtocolModule : IModule
         {
             ["m"] = m,
             ["v"] = new BString("TorrentCs"),
+            // BEP 10 "p": our TCP listen port, so peers can reach us for incoming connections
+            // and report us accurately to others via PEX (BEP 11).
+            ["p"] = new BNumber(_connectionOptions.Port),
         };
 
         using var ms = new MemoryStream();
@@ -107,6 +128,12 @@ public class ExtensionProtocolModule : IModule
             }
 
             context.SetValue(PeerExtensionsKey, peerExtensions);
+
+            // BEP 10 "p": the peer's TCP listen port, so we can reach it for incoming connections
+            // and gossip it accurately via PEX instead of its (possibly ephemeral) connection port.
+            if (dict.ContainsKey("p") && dict["p"] is BNumber port && port.Value is > 0 and <= 65535)
+                context.SetValue(PeerListenPortKey, (int)port.Value);
+
             _logger.LogDebug("Peer supports extensions: {Names}",
                 peerExtensions.Count > 0 ? string.Join(", ", peerExtensions.Keys) : "(none)");
         }

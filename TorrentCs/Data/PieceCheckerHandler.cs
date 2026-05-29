@@ -47,6 +47,11 @@ public class PieceCheckerHandler : IPieceDataHandler
                 blocks = [];
                 _pendingBlocks[pieceIndex] = blocks;
             }
+
+            // A re-requested block may arrive twice; keep only one per offset.
+            if (blocks.Any(b => b.Offset == blockOffset))
+                return;
+
             blocks.Add(block);
             TryCompletePiece(pieceIndex, ref completed, ref corrupted);
         }

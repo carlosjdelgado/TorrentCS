@@ -55,6 +55,7 @@ public class TorrentClientBuilder
     {
         _services.AddSingleton<IModule, CoreMessagingModule>();
         _services.AddSingleton<IModule, ExtensionProtocolModule>();
+        _services.AddSingleton<IBitTorrentExtension, PexExtension>();
         _services.AddSingleton<IPiecePicker, PiecePicker>();
         _services.AddSingleton<IApplicationProtocolFactory>(sp =>
             new ApplicationProtocolFactory(

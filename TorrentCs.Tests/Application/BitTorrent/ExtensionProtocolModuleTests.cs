@@ -7,6 +7,7 @@ using TorrentCs.Data;
 using TorrentCs.Data.Pieces;
 using TorrentCs.Modularity;
 using TorrentCs.Transport;
+using TorrentCs.Transport.Tcp;
 
 namespace TorrentCs.Tests.Application.BitTorrent;
 
@@ -15,7 +16,7 @@ public class ExtensionProtocolModuleTests
     [Fact]
     public void OnPrepareHandshake_SetsExtensionBit()
     {
-        var module = new ExtensionProtocolModule(NullLogger<ExtensionProtocolModule>.Instance, []);
+        var module = CreateModule();
         var reserved = new byte[8];
 
         module.OnPrepareHandshake(new PrepareHandshakeContext(reserved));
@@ -27,7 +28,7 @@ public class ExtensionProtocolModuleTests
     public void OnPeerConnected_PeerSupportsExtension_SendsExtendedHandshake()
     {
         var harness = new Harness(extensionCapable: true);
-        var module = new ExtensionProtocolModule(NullLogger<ExtensionProtocolModule>.Instance, []);
+        var module = CreateModule();
 
         module.OnPeerConnected(harness.Context);
 
@@ -40,7 +41,7 @@ public class ExtensionProtocolModuleTests
     public void OnPeerConnected_PeerWithoutExtension_SendsNothing()
     {
         var harness = new Harness(extensionCapable: false);
-        var module = new ExtensionProtocolModule(NullLogger<ExtensionProtocolModule>.Instance, []);
+        var module = CreateModule();
 
         module.OnPeerConnected(harness.Context);
 
@@ -51,8 +52,7 @@ public class ExtensionProtocolModuleTests
     public void OnPeerConnected_AdvertisesRegisteredExtensions()
     {
         var harness = new Harness(extensionCapable: true);
-        var module = new ExtensionProtocolModule(
-            NullLogger<ExtensionProtocolModule>.Instance, [new SpyExtension("ut_pex")]);
+        var module = CreateModule(new SpyExtension("ut_pex"));
 
         module.OnPeerConnected(harness.Context);
 
@@ -64,10 +64,43 @@ public class ExtensionProtocolModuleTests
     }
 
     [Fact]
+    public void OnPeerConnected_AdvertisesListenPort()
+    {
+        var harness = new Harness(extensionCapable: true);
+        var module = new ExtensionProtocolModule(
+            NullLogger<ExtensionProtocolModule>.Instance, [],
+            new LocalTcpConnectionOptions { Port = 51413 });
+
+        module.OnPeerConnected(harness.Context);
+
+        var sent = harness.SentMessages.Single(m => m.Id == ExtensionProtocolModule.ExtendedMessageId);
+        var dict = ParseHandshakePayload(sent.Data);
+        Assert.Equal(51413, ((BNumber)dict["p"]).Value);
+    }
+
+    [Fact]
+    public void OnMessageReceived_ExtendedHandshake_StoresPeerListenPort()
+    {
+        var harness = new Harness(extensionCapable: true);
+        var module = CreateModule();
+
+        var peerHandshake = new BDictionary
+        {
+            ["m"] = new BDictionary { ["ut_pex"] = new BNumber(1) },
+            ["p"] = new BNumber(6889),
+        };
+        harness.ReceiveExtended(extensionId: 0, BencodeBytes(peerHandshake));
+
+        module.OnMessageReceived(harness.Context);
+
+        Assert.Equal(6889, (int)harness.Peer.Values[ExtensionProtocolModule.PeerListenPortKey]);
+    }
+
+    [Fact]
     public void OnMessageReceived_ExtendedHandshake_StoresPeerExtensions()
     {
         var harness = new Harness(extensionCapable: true);
-        var module = new ExtensionProtocolModule(NullLogger<ExtensionProtocolModule>.Instance, []);
+        var module = CreateModule();
 
         var peerHandshake = new BDictionary
         {
@@ -85,7 +118,7 @@ public class ExtensionProtocolModuleTests
     public void OnMessageReceived_ExtensionMessage_DispatchesToExtension()
     {
         var spy = new SpyExtension("ut_pex");
-        var module = new ExtensionProtocolModule(NullLogger<ExtensionProtocolModule>.Instance, [spy]);
+        var module = CreateModule(spy);
         var harness = new Harness(extensionCapable: true);
 
         // ut_pex was registered with local id 1, so the peer addresses it as extension id 1.
@@ -98,7 +131,7 @@ public class ExtensionProtocolModuleTests
     [Fact]
     public void OnMessageReceived_NonExtendedMessage_Ignored()
     {
-        var module = new ExtensionProtocolModule(NullLogger<ExtensionProtocolModule>.Instance, []);
+        var module = CreateModule();
         var harness = new Harness(extensionCapable: true);
         harness.Context.MessageId = ChokeMessageId; // a non-extended message
         harness.Context.MessageLength = 1;
@@ -111,6 +144,10 @@ public class ExtensionProtocolModuleTests
 
     private const byte ExtensionBit = 0x10;
     private const byte ChokeMessageId = 0;
+
+    private static ExtensionProtocolModule CreateModule(params IBitTorrentExtension[] extensions) =>
+        new(NullLogger<ExtensionProtocolModule>.Instance, extensions,
+            new LocalTcpConnectionOptions { Port = 6881 });
 
     private static byte[] BencodeBytes(BDictionary dict)
     {

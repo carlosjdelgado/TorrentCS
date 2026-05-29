@@ -12,6 +12,7 @@ public class DownloadPiecesStage : IPipelineStage
 {
     private const int MaxConnectedPeers = 5;
     private const int IterationDelayMs = 100;
+    private static readonly TimeSpan BlockRequestTimeout = TimeSpan.FromSeconds(30);
 
     private readonly ILogger<DownloadPiecesStage> _logger;
     private readonly IApplicationProtocol _protocol;
@@ -53,6 +54,10 @@ public class DownloadPiecesStage : IPipelineStage
     private void RequestPieces(List<BitTorrentPeer> peers)
     {
         if (peers.Count == 0) return;
+
+        // Drop requests a peer never answered so they can be asked again — avoids stalling when a
+        // peer goes silent after we've requested blocks from it.
+        _protocol.BlockRequests.ExpireStaleRequests(BlockRequestTimeout);
 
         var availability = new Bitfield(_protocol.DataHandler.Metainfo.Pieces.Count);
         foreach (var peer in peers)

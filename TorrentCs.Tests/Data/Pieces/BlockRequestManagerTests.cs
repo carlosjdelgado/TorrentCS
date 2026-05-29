@@ -63,4 +63,43 @@ public class BlockRequestManagerTests
         manager.BlockRequested(block);
         Assert.Single(manager.RequestedBlocks);
     }
+
+    [Fact]
+    public void ExpireStaleRequests_RemovesOldRequests()
+    {
+        var manager = new BlockRequestManager();
+        var block = new Block(0, 0, new byte[16]);
+        manager.BlockRequested(block);
+
+        Thread.Sleep(20);
+        manager.ExpireStaleRequests(TimeSpan.FromMilliseconds(10));
+
+        Assert.Empty(manager.RequestedBlocks);
+    }
+
+    [Fact]
+    public void ExpireStaleRequests_KeepsRecentRequests()
+    {
+        var manager = new BlockRequestManager();
+        var block = new Block(0, 0, new byte[16]);
+        manager.BlockRequested(block);
+
+        manager.ExpireStaleRequests(TimeSpan.FromSeconds(60));
+
+        Assert.Contains(block, manager.RequestedBlocks);
+    }
+
+    [Fact]
+    public void ExpireStaleRequests_DoesNotTouchDownloadedBlocks()
+    {
+        var manager = new BlockRequestManager();
+        var block = new Block(0, 0, new byte[16]);
+        manager.BlockRequested(block);
+        manager.BlockReceived(block);
+
+        Thread.Sleep(20);
+        manager.ExpireStaleRequests(TimeSpan.FromMilliseconds(10));
+
+        Assert.Contains(block, manager.DownloadedBlocks);
+    }
 }

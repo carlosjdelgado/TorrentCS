@@ -2,7 +2,7 @@ namespace TorrentCs.Data.Pieces;
 
 public class BlockRequestManager : IBlockRequests
 {
-    private readonly HashSet<Block> _requestedBlocks = [];
+    private readonly Dictionary<Block, DateTime> _requestedBlocks = [];
     private readonly HashSet<Block> _downloadedBlocks = [];
     private readonly object _lock = new();
 
@@ -10,7 +10,7 @@ public class BlockRequestManager : IBlockRequests
     // thread mutates them, so callers must get an isolated copy taken under the lock.
     public IReadOnlyCollection<Block> RequestedBlocks
     {
-        get { lock (_lock) return _requestedBlocks.ToList(); }
+        get { lock (_lock) return _requestedBlocks.Keys.ToList(); }
     }
 
     public IReadOnlyCollection<Block> DownloadedBlocks
@@ -20,7 +20,7 @@ public class BlockRequestManager : IBlockRequests
 
     public void BlockRequested(Block block)
     {
-        lock (_lock) _requestedBlocks.Add(block);
+        lock (_lock) _requestedBlocks[block] = DateTime.UtcNow;
     }
 
     public void BlockReceived(Block block)
@@ -36,8 +36,24 @@ public class BlockRequestManager : IBlockRequests
     {
         lock (_lock)
         {
-            _requestedBlocks.RemoveWhere(b => b.PieceIndex == pieceIndex);
+            foreach (var block in _requestedBlocks.Keys.Where(b => b.PieceIndex == pieceIndex).ToList())
+                _requestedBlocks.Remove(block);
             _downloadedBlocks.RemoveWhere(b => b.PieceIndex == pieceIndex);
+        }
+    }
+
+    public void ExpireStaleRequests(TimeSpan timeout)
+    {
+        var cutoff = DateTime.UtcNow - timeout;
+        lock (_lock)
+        {
+            foreach (var block in _requestedBlocks
+                         .Where(kv => kv.Value < cutoff)
+                         .Select(kv => kv.Key)
+                         .ToList())
+            {
+                _requestedBlocks.Remove(block);
+            }
         }
     }
 }

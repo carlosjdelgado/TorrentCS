@@ -13,4 +13,7 @@ public interface IBitTorrentExtension
 
     /// <summary>Called when the peer sends a message addressed to this extension.</summary>
     void OnMessageReceived(IPeerContext context, byte[] data);
+
+    /// <summary>Periodic per-peer maintenance (e.g. send gossip). Invoked roughly every minute.</summary>
+    void OnTick(IPeerContext context) { }
 }

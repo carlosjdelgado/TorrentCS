@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="TorrentCs.Cli/TorrentCs.Cli.csproj" />
+  <Project Path="TorrentCs.Tests/TorrentCs.Tests.csproj" />
+  <Project Path="TorrentCs/TorrentCs.csproj" />
+</Solution>

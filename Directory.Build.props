@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Carlos Jimenez</Authors>
+    <Product>TorrentCs</Product>
+    <Copyright>Copyright © 2026</Copyright>
+    <PackageLicenseExpression>LGPL-3.0-only</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/carlosjdelgado/torrentcs</RepositoryUrl>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+</Project>

@@ -92,6 +92,56 @@ public class MetadataMessageHandlerTests
         Assert.Equal(MetadataMessage.MessageType.Reject, ((MetadataMessage)ctx.Sent.Single()).RequestType);
     }
 
+    [Fact]
+    public async Task GetMetainfo_FedAllDataPieces_RebuildsAndVerifiesMetainfo()
+    {
+        var full = BuildMetainfo(contentPieces: 2000); // metadata spans several 16 KiB pieces
+        var raw = full.RawInfoDict;
+        var partial = Metainfo.Partial(full.InfoHash, ["http://t/announce"]);
+        var handler = CreateHandler();
+
+        var task = handler.GetMetainfo(new FakeTorrentContext { Metainfo = partial }, CancellationToken.None);
+
+        int pieceCount = (raw.Length + MetadataMessage.PieceSize - 1) / MetadataMessage.PieceSize;
+        for (int i = 0; i < pieceCount; i++)
+        {
+            int offset = i * MetadataMessage.PieceSize;
+            int length = Math.Min(MetadataMessage.PieceSize, raw.Length - offset);
+            handler.MessageReceived(new FakeReceivedContext
+            {
+                Metainfo = partial,
+                Message = new MetadataMessage
+                {
+                    RequestType = MetadataMessage.MessageType.Data,
+                    PieceIndex = i,
+                    TotalSize = raw.Length,
+                    PieceData = raw[offset..(offset + length)],
+                },
+            });
+        }
+
+        var rebuilt = await task;
+        Assert.Equal(full.InfoHash, rebuilt.InfoHash);
+        Assert.True(rebuilt.IsComplete);
+        Assert.Equal(full.Pieces.Count, rebuilt.Pieces.Count);
+        Assert.Contains("http://t/announce", rebuilt.Trackers);
+    }
+
+    [Fact]
+    public void PeerConnected_WhileFetching_RequestsFirstPiece()
+    {
+        var partial = Metainfo.Partial(new Sha1Hash(new byte[20]), []);
+        var handler = CreateHandler();
+        _ = handler.GetMetainfo(new FakeTorrentContext { Metainfo = partial }, CancellationToken.None);
+
+        var ctx = new FakeReceivedContext { Metainfo = partial };
+        handler.PeerConnected(ctx);
+
+        var request = (MetadataMessage)ctx.Sent.Single();
+        Assert.Equal(MetadataMessage.MessageType.Request, request.RequestType);
+        Assert.Equal(0, request.PieceIndex);
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private static MetadataMessageHandler CreateHandler() =>
@@ -150,5 +200,15 @@ public class MetadataMessageHandlerTests
         public IBlockRequests BlockRequests => throw new NotSupportedException();
         public void RegisterMessageHandler(byte messageId) => throw new NotSupportedException();
         public void SendMessage(byte messageId, byte[] data) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeTorrentContext : ITorrentContext
+    {
+        public Metainfo Metainfo { get; init; } = null!;
+        public IReadOnlyCollection<IPeer> Peers => [];
+        public void PeersAvailable(IEnumerable<ITransportStream> peers) { }
+
+        public IPieceDataHandler DataHandler => throw new NotSupportedException();
+        public IBlockRequests BlockRequests => throw new NotSupportedException();
     }
 }

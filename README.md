@@ -28,6 +28,7 @@ Implemented BitTorrent Enhancement Proposals (BEPs):
 | BEP | Description |
 | --- | --- |
 | [BEP 3](https://www.bittorrent.org/beps/bep_0003.html) | The BitTorrent core protocol |
+| [BEP 9](https://www.bittorrent.org/beps/bep_0009.html) | Metadata exchange / `ut_metadata` (serve and download the `info` dictionary; start from an info-hash) |
 | [BEP 10](https://www.bittorrent.org/beps/bep_0010.html) | Extension protocol (extended handshake, extension registry) |
 | [BEP 11](https://www.bittorrent.org/beps/bep_0011.html) | Peer exchange / PEX (send + receive) |
 | [BEP 12](https://www.bittorrent.org/beps/bep_0012.html) | Multitracker metadata extension (`announce-list`) |
@@ -140,7 +141,7 @@ Planned features, in rough priority order:
 4. [x] **UPnP port forwarding** — automatically open the listen port on the router
 5. [x] **Extension protocol** ([BEP 10](https://www.bittorrent.org/beps/bep_0010.html)) — the foundation for most modern extensions
 6. [x] **Peer exchange / PEX** ([BEP 11](https://www.bittorrent.org/beps/bep_0011.html)) — discover peers from other peers
-7. [ ] **Metadata exchange** ([BEP 9](https://www.bittorrent.org/beps/bep_0009.html)) — fetch the `info` dictionary from peers
+7. [x] **Metadata exchange** ([BEP 9](https://www.bittorrent.org/beps/bep_0009.html)) — fetch the `info` dictionary from peers
 8. [ ] **Magnet link support** — parse `magnet:` URIs (builds on BEP 9 + BEP 10)
 9. [ ] **Fast extension** ([BEP 6](https://www.bittorrent.org/beps/bep_0006.html))
 10. [ ] **DHT** for trackerless torrents ([BEP 5](https://www.bittorrent.org/beps/bep_0005.html))

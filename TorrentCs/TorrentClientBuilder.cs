@@ -10,6 +10,7 @@ using TorrentCs.Engine;
 using TorrentCs.Extensions.ExtensionProtocol;
 using TorrentCs.Extensions.PeerExchange;
 using TorrentCs.Extensions.SendMetadata;
+using TorrentCs.Modularity.MetainfoProvider;
 using TorrentCs.Modularity;
 using TorrentCs.Tracker;
 using TorrentCs.Transport;
@@ -58,7 +59,11 @@ public class TorrentClientBuilder
         _services.AddSingleton<IModule, CoreMessagingModule>();
         _services.AddSingleton<IModule, ExtensionProtocolModule>();
         _services.AddSingleton<IExtensionProtocolMessageHandler, PeerExchangeMessageHandler>();
-        _services.AddSingleton<IExtensionProtocolMessageHandler, MetadataMessageHandler>();
+        // MetadataMessageHandler is both an extension handler (serve/download metadata) and the
+        // IMetainfoProvider used to fetch metadata when starting from an info-hash. Share one instance.
+        _services.AddSingleton<MetadataMessageHandler>();
+        _services.AddSingleton<IExtensionProtocolMessageHandler>(sp => sp.GetRequiredService<MetadataMessageHandler>());
+        _services.AddSingleton<IMetainfoProvider>(sp => sp.GetRequiredService<MetadataMessageHandler>());
         _services.AddSingleton<IPiecePicker, PiecePicker>();
         _services.AddSingleton<IApplicationProtocolFactory>(sp =>
             new ApplicationProtocolFactory(

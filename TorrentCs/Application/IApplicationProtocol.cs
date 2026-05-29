@@ -30,4 +30,7 @@ public interface IApplicationProtocol
 
     /// <summary>Recalculates which peers are choked/unchoked. Called periodically by the engine.</summary>
     void UpdateChoking();
+
+    /// <summary>Disconnects all peers and clears the known/connecting peer lists.</summary>
+    void DisconnectAll();
 }

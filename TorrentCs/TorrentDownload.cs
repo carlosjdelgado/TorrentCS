@@ -1,30 +1,88 @@
+using TorrentCs.Application;
 using TorrentCs.Data;
 using TorrentCs.Engine;
+using TorrentCs.Modularity;
+using TorrentCs.Modularity.MetainfoProvider;
 using TorrentCs.Tracker;
 
 namespace TorrentCs;
 
 public sealed class TorrentDownload
 {
-    private readonly PipelineRunner _runner;
-    private readonly AggregatedTracker _tracker;
     private readonly ManualResetEvent _completedEvent = new(false);
 
+    // Metadata-fetch phase (BEP 9): present only when started from an info-hash.
+    private readonly PipelineRunner? _metadataRunner;
+    private readonly IApplicationProtocol? _partialProtocol;
+    private readonly IMetainfoProvider? _metainfoProvider;
+    private readonly Func<Metainfo, (PipelineRunner Runner, AggregatedTracker Tracker)>? _buildRunner;
+    private readonly CancellationTokenSource _cts = new();
+
+    private PipelineRunner? _runner;
+    private AggregatedTracker _tracker;
+    private Metainfo _description;
+    private DownloadState _metadataState = DownloadState.FetchingMetadata;
+
+    /// <summary>Creates a download for a torrent whose full metainfo is already known.</summary>
     public TorrentDownload(PipelineRunner runner, AggregatedTracker tracker)
     {
         _runner = runner;
         _tracker = tracker;
-        _runner.DownloadCompleted += () => _completedEvent.Set();
+        _description = runner.Description;
+        runner.DownloadCompleted += () => _completedEvent.Set();
     }
 
-    public Metainfo Description => _runner.Description;
-    public DownloadState State => _runner.State;
-    public double Progress => _runner.DownloadProgress;
+    private TorrentDownload(
+        PipelineRunner metadataRunner,
+        AggregatedTracker tracker,
+        Metainfo partialMetainfo,
+        IApplicationProtocol partialProtocol,
+        IMetainfoProvider metainfoProvider,
+        Func<Metainfo, (PipelineRunner, AggregatedTracker)> buildRunner)
+    {
+        _metadataRunner = metadataRunner;
+        _tracker = tracker;
+        _description = partialMetainfo;
+        _partialProtocol = partialProtocol;
+        _metainfoProvider = metainfoProvider;
+        _buildRunner = buildRunner;
+    }
+
+    public Metainfo Description => _runner?.Description ?? _description;
+    public DownloadState State => _runner?.State ?? _metadataState;
+    public double Progress => _runner?.DownloadProgress ?? 0;
     public IReadOnlyCollection<ITrackerDetails> Trackers => _tracker.Trackers;
 
-    public void Start() => _runner.Start();
+    /// <summary>
+    /// Creates a download that first fetches the metadata from peers (BEP 9) and then transitions to
+    /// a normal download once the full metainfo is known.
+    /// </summary>
+    internal static TorrentDownload CreateForMetadata(
+        PipelineRunner metadataRunner,
+        AggregatedTracker tracker,
+        Metainfo partialMetainfo,
+        IApplicationProtocol partialProtocol,
+        IMetainfoProvider metainfoProvider,
+        Func<Metainfo, (PipelineRunner, AggregatedTracker)> buildRunner) =>
+        new(metadataRunner, tracker, partialMetainfo, partialProtocol, metainfoProvider, buildRunner);
 
-    public void Stop() => _runner.Stop();
+    public void Start()
+    {
+        if (_metadataRunner is null)
+        {
+            _runner!.Start();
+            return;
+        }
+
+        _ = RunFromMetadataAsync();
+    }
+
+    public void Stop()
+    {
+        _cts.Cancel();
+        _metadataRunner?.Stop();
+        _runner?.Stop();
+    }
 
     public Task WaitForDownloadCompletionAsync(TimeSpan? timeout = null)
     {
@@ -36,7 +94,38 @@ public sealed class TorrentDownload
         });
     }
 
-    public long DownloadRate() => _runner.DownloadRateMeasurer.AverageRate();
+    public long DownloadRate() => _runner?.DownloadRateMeasurer.AverageRate() ?? 0;
 
-    public long UploadRate() => _runner.UploadRateMeasurer.AverageRate();
+    public long UploadRate() => _runner?.UploadRateMeasurer.AverageRate() ?? 0;
+
+    // Runs the metadata-fetch phase, then builds and starts the normal download with the full metainfo.
+    private async Task RunFromMetadataAsync()
+    {
+        try
+        {
+            _metadataRunner!.Start();
+            var metainfo = await _metainfoProvider!.GetMetainfo((ITorrentContext)_partialProtocol!, _cts.Token);
+
+            // Tear down the metadata-fetch phase completely (including its peer connections) before
+            // starting the data download, so we reconnect cleanly rather than holding duplicate
+            // connections to the same peers.
+            _metadataRunner.Stop();
+            _partialProtocol!.DisconnectAll();
+
+            var (runner, tracker) = _buildRunner!(metainfo);
+            _description = metainfo;
+            _tracker = tracker;
+            runner.DownloadCompleted += () => _completedEvent.Set();
+            _runner = runner;
+            runner.Start();
+        }
+        catch (OperationCanceledException)
+        {
+            // Stopped before the metadata could be fetched.
+        }
+        catch
+        {
+            _metadataState = DownloadState.Failed;
+        }
+    }
 }

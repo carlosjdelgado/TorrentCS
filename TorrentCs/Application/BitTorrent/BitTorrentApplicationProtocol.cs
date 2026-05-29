@@ -119,6 +119,21 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         _chokingManager.Update(snapshot);
     }
 
+    public void DisconnectAll()
+    {
+        List<BitTorrentPeer> snapshot;
+        lock (_peersLock)
+        {
+            snapshot = [.. _peers];
+            _peers.Clear();
+            _availablePeers.Clear();
+            _connectingPeers.Clear();
+        }
+
+        foreach (var peer in snapshot)
+            peer.Disconnect();
+    }
+
     public void MessageReceived(byte messageId, int length, BinaryReader reader, BitTorrentPeer peer)
     {
         var peerCtx = BuildPeerContext(peer);

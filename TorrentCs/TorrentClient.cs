@@ -2,9 +2,12 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using TorrentCs.Application;
 using TorrentCs.Application.BitTorrent;
+using TorrentCs.Application.BitTorrent.Pipelines;
 using TorrentCs.Application.Pipelines;
 using TorrentCs.Data;
 using TorrentCs.Engine;
+using TorrentCs.Modularity;
+using TorrentCs.Modularity.MetainfoProvider;
 using TorrentCs.Tracker;
 using TorrentCs.TorrentParsers;
 using TorrentCs.Transport;
@@ -22,6 +25,8 @@ public class TorrentClient : ITorrentClient
     private readonly IPipelineFactory _pipelineFactory;
     private readonly IResumeStore _resumeStore;
     private readonly IPortForwarding _portForwarding;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly IMetainfoProvider _metainfoProvider;
     private readonly Dictionary<Sha1Hash, TorrentDownload> _downloads = [];
     private readonly ConcurrentDictionary<Sha1Hash, IApplicationProtocol> _protocolsByInfoHash = new();
     private readonly List<ResumePersister> _resumePersisters = [];
@@ -35,7 +40,9 @@ public class TorrentClient : ITorrentClient
         PeerId localPeerId,
         IPipelineFactory pipelineFactory,
         IResumeStore resumeStore,
-        IPortForwarding portForwarding)
+        IPortForwarding portForwarding,
+        ILoggerFactory loggerFactory,
+        IMetainfoProvider metainfoProvider)
     {
         _logger = logger;
         _mainLoop = mainLoop;
@@ -46,6 +53,8 @@ public class TorrentClient : ITorrentClient
         _pipelineFactory = pipelineFactory;
         _resumeStore = resumeStore;
         _portForwarding = portForwarding;
+        _loggerFactory = loggerFactory;
+        _metainfoProvider = metainfoProvider;
 
         _transport.AcceptConnectionHandler += OnIncomingConnection;
         _mainLoop.Start();
@@ -73,6 +82,45 @@ public class TorrentClient : ITorrentClient
 
     public TorrentDownload Add(Metainfo metainfo, string downloadDirectory)
     {
+        var (runner, tracker) = BuildRunner(metainfo, downloadDirectory);
+        var download = new TorrentDownload(runner, tracker);
+
+        _downloads[metainfo.InfoHash] = download;
+        _logger.LogInformation("Added torrent {Name} ({InfoHash})", metainfo.Name, metainfo.InfoHash);
+        return download;
+    }
+
+    /// <summary>
+    /// Adds a torrent known only by its info-hash (e.g. from a magnet link). The metadata (the
+    /// .torrent's info dictionary) is fetched from peers via BEP 9 before the data download begins.
+    /// </summary>
+    public TorrentDownload Add(Sha1Hash infoHash, IEnumerable<string> trackers, string downloadDirectory)
+    {
+        var partial = Metainfo.Partial(infoHash, trackers);
+
+        // A protocol over the partial metainfo: enough to handshake and run ut_metadata, not to
+        // download data. The metadata-fetch stage just keeps peer connections open.
+        var fileHandler = new DiskFileHandler(downloadDirectory);
+        var dataHandler = new BlockDataHandler(fileHandler, partial);
+        var protocol = _applicationProtocolFactory.Create(partial, dataHandler);
+        _protocolsByInfoHash[infoHash] = protocol;
+
+        var tracker = new AggregatedTracker(_trackerClientFactory, partial.Trackers);
+        var fetchStage = new FetchMetadataStage(_loggerFactory.CreateLogger<FetchMetadataStage>(), protocol);
+        var metadataPipeline = new Pipeline(_loggerFactory.CreateLogger<Pipeline>(), [fetchStage]);
+        var metadataRunner = new PipelineRunner(protocol, tracker, metadataPipeline, _mainLoop, LocalPeerId);
+
+        var download = TorrentDownload.CreateForMetadata(
+            metadataRunner, tracker, partial, protocol, _metainfoProvider,
+            metainfo => BuildRunner(metainfo, downloadDirectory));
+
+        _downloads[infoHash] = download;
+        _logger.LogInformation("Added torrent from info-hash {InfoHash}; fetching metadata", infoHash);
+        return download;
+    }
+
+    private (PipelineRunner Runner, AggregatedTracker Tracker) BuildRunner(Metainfo metainfo, string downloadDirectory)
+    {
         var fileHandler = new DiskFileHandler(downloadDirectory);
         var dataHandler = new BlockDataHandler(fileHandler, metainfo);
 
@@ -83,13 +131,8 @@ public class TorrentClient : ITorrentClient
 
         var tracker = new AggregatedTracker(_trackerClientFactory, metainfo.Trackers);
         var pipeline = _pipelineFactory.CreatePipeline(protocol);
-
         var runner = new PipelineRunner(protocol, tracker, pipeline, _mainLoop, LocalPeerId);
-        var download = new TorrentDownload(runner, tracker);
-
-        _downloads[metainfo.InfoHash] = download;
-        _logger.LogInformation("Added torrent {Name} ({InfoHash})", metainfo.Name, metainfo.InfoHash);
-        return download;
+        return (runner, tracker);
     }
 
     public void Dispose()

@@ -27,7 +27,7 @@ var upnpOption = new Option<bool>("--upnp")
 
 var inputArgument = new Argument<string>("input")
 {
-    Description = "Path to the .torrent file to download.",
+    Description = "Path to a .torrent file, or a magnet link.",
 };
 
 var rootCommand = new RootCommand("TorrentCs — a command-line BitTorrent client.");
@@ -53,7 +53,16 @@ return await rootCommand.Parse(args).InvokeAsync();
 static async Task<int> RunAsync(
     string input, string output, int port, bool verbose, bool upnp, CancellationToken ct)
 {
-    if (!File.Exists(input))
+    MagnetLink? magnet = null;
+    if (MagnetLink.IsMagnetLink(input))
+    {
+        if (!MagnetLink.TryParse(input, out magnet))
+        {
+            Console.Error.WriteLine($"Invalid magnet link: {input}");
+            return 1;
+        }
+    }
+    else if (!File.Exists(input))
     {
         Console.Error.WriteLine($"Torrent file not found: {input}");
         return 1;
@@ -73,7 +82,7 @@ static async Task<int> RunAsync(
 
     using var client = builder.Build();
 
-    var download = client.Add(input, output);
+    var download = magnet is not null ? client.Add(magnet, output) : client.Add(input, output);
 
     Console.WriteLine($"Downloading '{download.Description.Name}' to '{output}'");
     Console.WriteLine($"Peer ID: {client.LocalPeerId}");

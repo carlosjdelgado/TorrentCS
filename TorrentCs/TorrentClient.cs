@@ -90,6 +90,10 @@ public class TorrentClient : ITorrentClient
         return download;
     }
 
+    /// <summary>Adds a torrent from a magnet link, fetching its metadata from peers (BEP 9).</summary>
+    public TorrentDownload Add(MagnetLink magnet, string downloadDirectory) =>
+        Add(magnet.InfoHash, magnet.Trackers, downloadDirectory);
+
     /// <summary>
     /// Adds a torrent known only by its info-hash (e.g. from a magnet link). The metadata (the
     /// .torrent's info dictionary) is fetched from peers via BEP 9 before the data download begins.

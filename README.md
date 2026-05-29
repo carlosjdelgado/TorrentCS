@@ -51,6 +51,13 @@ download.Start();
 await download.WaitForDownloadCompletionAsync();
 ```
 
+You can also start from a magnet link; the metadata is fetched from peers (BEP 9) before downloading:
+
+```csharp
+var magnet = MagnetLink.Parse("magnet:?xt=urn:btih:...&tr=...");
+var download = client.Add(magnet, "/home/user/Downloads");
+```
+
 `TorrentClient.Create()` builds a client with sensible defaults: TCP transport, the BitTorrent
 application protocol and the default download pipeline.
 
@@ -92,10 +99,10 @@ your own implementations through `TorrentClientBuilder.ConfigureServices(...)`.
 The repository also includes `TorrentCs.Cli`, a small command-line client:
 
 ```
-torrentcs <torrent-file> [options]
+torrentcs <input> [options]
 
 Arguments:
-  <torrent-file>        Path to the .torrent file to download.
+  <input>               Path to a .torrent file, or a magnet link.
 
 Options:
   -o, --output <dir>    Directory to save downloaded files to (default: current directory).
@@ -108,6 +115,9 @@ Example:
 
 ```bash
 dotnet run --project TorrentCs.Cli -- ubuntu.torrent -o /home/user/Downloads -p 6881 -v
+
+# or from a magnet link
+dotnet run --project TorrentCs.Cli -- "magnet:?xt=urn:btih:..." -o /home/user/Downloads
 ```
 
 ## Repository layout
@@ -142,7 +152,7 @@ Planned features, in rough priority order:
 5. [x] **Extension protocol** ([BEP 10](https://www.bittorrent.org/beps/bep_0010.html)) — the foundation for most modern extensions
 6. [x] **Peer exchange / PEX** ([BEP 11](https://www.bittorrent.org/beps/bep_0011.html)) — discover peers from other peers
 7. [x] **Metadata exchange** ([BEP 9](https://www.bittorrent.org/beps/bep_0009.html)) — fetch the `info` dictionary from peers
-8. [ ] **Magnet link support** — parse `magnet:` URIs (builds on BEP 9 + BEP 10)
+8. [x] **Magnet link support** — parse `magnet:` URIs (builds on BEP 9 + BEP 10)
 9. [ ] **Fast extension** ([BEP 6](https://www.bittorrent.org/beps/bep_0006.html))
 10. [ ] **DHT** for trackerless torrents ([BEP 5](https://www.bittorrent.org/beps/bep_0005.html))
 11. [ ] **uTorrent Transport Protocol / uTP** ([BEP 29](https://www.bittorrent.org/beps/bep_0029.html))

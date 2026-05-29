@@ -12,6 +12,9 @@ public interface ITorrentClient : IDisposable
     TorrentDownload Add(Stream torrentStream, string downloadDirectory);
     TorrentDownload Add(string torrentFilePath, string downloadDirectory);
 
+    /// <summary>Adds a torrent from a magnet link, fetching its metadata from peers via BEP 9.</summary>
+    TorrentDownload Add(MagnetLink magnet, string downloadDirectory);
+
     /// <summary>
     /// Adds a torrent known only by its info-hash (e.g. from a magnet link), fetching the metadata
     /// from peers via BEP 9 before downloading the data.

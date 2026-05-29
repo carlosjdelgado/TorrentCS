@@ -19,6 +19,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
     private readonly List<ITransportStream> _availablePeers = new();
     private readonly List<ITransportStream> _connectingPeers = new();
     private readonly object _peersLock = new();
+    private readonly ChokingManager _chokingManager = new();
 
     public BitTorrentApplicationProtocol(
         ILogger<BitTorrentApplicationProtocol> logger,
@@ -111,6 +112,13 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
     public void PieceCorrupted(Piece piece) =>
         _logger.LogWarning("Piece {Index} corrupted, will re-download", piece.Index);
 
+    public void UpdateChoking()
+    {
+        List<BitTorrentPeer> snapshot;
+        lock (_peersLock) snapshot = [.. _peers];
+        _chokingManager.Update(snapshot);
+    }
+
     public void MessageReceived(byte messageId, int length, BinaryReader reader, BitTorrentPeer peer)
     {
         var peerCtx = BuildPeerContext(peer);
@@ -123,6 +131,11 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
 
         foreach (var module in _modules)
             module.OnMessageReceived(msgCtx);
+
+        // A peer may have just become interested; give it an upload slot if one is free.
+        List<BitTorrentPeer> snapshot;
+        lock (_peersLock) snapshot = [.. _peers];
+        _chokingManager.FillFreeSlots(snapshot);
     }
 
     public void PeerDisconnected(BitTorrentPeer peer)

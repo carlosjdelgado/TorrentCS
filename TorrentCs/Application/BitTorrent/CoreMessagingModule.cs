@@ -40,13 +40,8 @@ public class CoreMessagingModule : IModule
                 peer.IsChokedByRemotePeer = false;
                 break;
             case InterestedMessage:
+                // Mark interest only; the ChokingManager decides if/when to unchoke this peer.
                 peer.IsInterestedInRemotePeer = true;
-                // Unchoke the peer so it may request data from us (seeding).
-                if (peer.IsChokingRemotePeer)
-                {
-                    peer.IsChokingRemotePeer = false;
-                    context.SendMessage(UnchokeMessage.MessageID, []);
-                }
                 break;
             case NotInterestedMessage:
                 peer.IsInterestedInRemotePeer = false;
@@ -68,6 +63,7 @@ public class CoreMessagingModule : IModule
                 context.DataHandler.WriteBlockData(offset, piece.Block.Data);
                 context.BlockRequests.BlockReceived(
                     new Block(piece.Block.PieceIndex, piece.Block.Offset, piece.Block.Data));
+                peer.RecordDownloaded(piece.Block.Data.Length); // for tit-for-tat rate tracking
                 break;
             case CancelMessage cancel when cancel.Block is not null:
                 context.BlockRequests.ClearBlocksForPiece(cancel.Block.PieceIndex);

@@ -1,13 +1,16 @@
 using System.Text;
+using TorrentCs.Application.BitTorrent.Messages;
 using TorrentCs.Data;
+using TorrentCs.Engine;
 using TorrentCs.Transport;
 
 namespace TorrentCs.Application.BitTorrent;
 
-public class BitTorrentPeer : IPeer
+public class BitTorrentPeer : IPeer, IChokablePeer
 {
     private readonly ITransportStream _stream;
     private readonly BigEndianBinaryWriter _writer;
+    private readonly RateMeasurer _downloadRate = new();
     private IPeerMessageHandler? _messageHandler;
 
     public BitTorrentPeer(ITransportStream stream, Metainfo metainfo)
@@ -41,6 +44,25 @@ public class BitTorrentPeer : IPeer
             _stream.Stream.Write(data, 0, data.Length);
             _stream.Stream.Flush();
         }
+    }
+
+    /// <summary>Records bytes received from this peer, for download-rate / tit-for-tat tracking.</summary>
+    public void RecordDownloaded(int bytes) => _downloadRate.AddMeasure(bytes);
+
+    public long DownloadRate() => _downloadRate.AverageRate();
+
+    public void Choke()
+    {
+        if (IsChokingRemotePeer) return;
+        IsChokingRemotePeer = true;
+        SendMessage(ChokeMessage.MessageID, []);
+    }
+
+    public void Unchoke()
+    {
+        if (!IsChokingRemotePeer) return;
+        IsChokingRemotePeer = false;
+        SendMessage(UnchokeMessage.MessageID, []);
     }
 
     public void Disconnect() => _stream.Disconnect();

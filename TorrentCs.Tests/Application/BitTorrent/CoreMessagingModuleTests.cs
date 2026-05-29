@@ -50,26 +50,27 @@ public class CoreMessagingModuleTests
     }
 
     [Fact]
-    public void OnMessageReceived_Interested_ReturnsUnchoke()
+    public void OnMessageReceived_Interested_MarksInterestWithoutUnchoking()
     {
+        // Unchoking is now the ChokingManager's responsibility, not the messaging module's.
         var harness = new Harness(pieceCount: 2);
 
         harness.Receive(InterestedMessage.MessageID, []);
 
-        Assert.Contains(harness.SentMessages, m => m.Id == UnchokeMessage.MessageID);
-        Assert.False(harness.Peer.IsChokingRemotePeer);
         Assert.True(harness.Peer.IsInterestedInRemotePeer);
+        Assert.DoesNotContain(harness.SentMessages, m => m.Id == UnchokeMessage.MessageID);
+        Assert.True(harness.Peer.IsChokingRemotePeer); // still choked until the manager unchokes
     }
 
     [Fact]
-    public void OnMessageReceived_InterestedTwice_UnchokesOnce()
+    public void OnMessageReceived_NotInterested_ClearsInterest()
     {
         var harness = new Harness(pieceCount: 2);
 
         harness.Receive(InterestedMessage.MessageID, []);
-        harness.Receive(InterestedMessage.MessageID, []);
+        harness.Receive(NotInterestedMessage.MessageID, []);
 
-        Assert.Single(harness.SentMessages, m => m.Id == UnchokeMessage.MessageID);
+        Assert.False(harness.Peer.IsInterestedInRemotePeer);
     }
 
     [Fact]

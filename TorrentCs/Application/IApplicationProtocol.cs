@@ -21,4 +21,7 @@ public interface IApplicationProtocol
     void PieceCompleted(Piece piece);
     void PieceCorrupted(Piece piece);
     void PeersAvailable(IEnumerable<ITransportStream> peers);
+
+    /// <summary>Recalculates which peers are choked/unchoked. Called periodically by the engine.</summary>
+    void UpdateChoking();
 }

@@ -64,6 +64,7 @@ public class PipelineRunner : ITorrentPipelineRunner
     {
         _statisticsTask = _mainLoop.AddRegularTask(UpdateStatistics);
         _ = TrackerLoopAsync(_trackerCts.Token);
+        _ = ChokingLoopAsync(_trackerCts.Token);
         _ = Task.Run(() =>
         {
             var progress = new Progress<StatusUpdate>(u =>
@@ -98,6 +99,20 @@ public class PipelineRunner : ITorrentPipelineRunner
             {
                 break;
             }
+        }
+    }
+
+    private async Task ChokingLoopAsync(CancellationToken ct)
+    {
+        // First pass shortly after start so interested peers get unchoked quickly, then every 10s.
+        try { await Task.Delay(TimeSpan.FromSeconds(1), ct); }
+        catch (OperationCanceledException) { return; }
+
+        while (!ct.IsCancellationRequested)
+        {
+            _mainLoop.AddTask(_protocol.UpdateChoking);
+            try { await Task.Delay(TimeSpan.FromSeconds(10), ct); }
+            catch (OperationCanceledException) { break; }
         }
     }
 

@@ -90,8 +90,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
 
     public void ConnectToPeer(ITransportStream stream) => _ = ConnectToPeerAsync(stream);
 
-    public void AcceptConnection(AcceptPeerConnectionEventArgs args)
-        => _ = AcceptConnectionAsync(args.Stream);
+    public void AcceptConnection(ITransportStream stream) => _ = AcceptConnectionAsync(stream);
 
     public void PieceCompleted(Piece piece)
     {
@@ -173,8 +172,10 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
     {
         try
         {
+            // The client already read the incoming handshake and routed it here by info-hash;
+            // we only need to send our half of the handshake.
             var peer = new BitTorrentPeer(stream, Metainfo);
-            await peer.PerformHandshakeAsync(Metainfo, _localPeerId, isInitiator: false);
+            await peer.SendHandshakeResponseAsync(Metainfo, _localPeerId);
             PeerConnected(peer, stream);
         }
         catch (Exception ex)
@@ -192,7 +193,7 @@ public class BitTorrentApplicationProtocol : IApplicationProtocol, IPeerMessageH
         foreach (var module in _modules)
             module.OnPeerConnected(ctx);
 
-        _ = peer.ReceiveMessagesAsync(Metainfo, CancellationToken.None);
+        _ = peer.ReceiveMessagesAsync(CancellationToken.None);
         _logger.LogDebug("Peer connected: {Address}", peer.Address);
     }
 

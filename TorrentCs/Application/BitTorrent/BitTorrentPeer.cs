@@ -67,6 +67,40 @@ public class BitTorrentPeer : IPeer, IChokablePeer
 
     public void Disconnect() => _stream.Disconnect();
 
+    /// <summary>The info-hash and peer id read from an incoming handshake.</summary>
+    public readonly record struct IncomingHandshake(Sha1Hash InfoHash, byte[] PeerId);
+
+    /// <summary>
+    /// Reads the handshake an initiating peer sends, without verifying the info-hash. Used to route
+    /// an incoming connection to the matching torrent before a peer object is created.
+    /// </summary>
+    public static async Task<IncomingHandshake> ReadIncomingHandshakeAsync(
+        Stream stream, CancellationToken ct = default)
+    {
+        int pstrLen = stream.ReadByte();
+        if (pstrLen < 0) throw new EndOfStreamException();
+
+        var pstr = new byte[pstrLen];
+        await ReadExactlyAsync(stream, pstr, ct);
+        if (Encoding.ASCII.GetString(pstr) != "BitTorrent protocol")
+            throw new InvalidDataException("Unexpected protocol identifier in handshake.");
+
+        var reserved = new byte[8];
+        await ReadExactlyAsync(stream, reserved, ct);
+
+        var infoHash = new byte[20];
+        await ReadExactlyAsync(stream, infoHash, ct);
+
+        var peerId = new byte[20];
+        await ReadExactlyAsync(stream, peerId, ct);
+
+        return new IncomingHandshake(new Sha1Hash(infoHash), peerId);
+    }
+
+    /// <summary>Sends our handshake in reply to an incoming connection whose handshake was read already.</summary>
+    public Task SendHandshakeResponseAsync(Metainfo metainfo, PeerId localPeerId)
+        => SendHandshakeAsync(_stream.Stream, metainfo.InfoHash, localPeerId);
+
     public async Task PerformHandshakeAsync(
         Metainfo metainfo, PeerId localPeerId, bool isInitiator)
     {
@@ -84,11 +118,10 @@ public class BitTorrentPeer : IPeer, IChokablePeer
         }
     }
 
-    public async Task ReceiveMessagesAsync(Metainfo metainfo, CancellationToken ct)
+    public async Task ReceiveMessagesAsync(CancellationToken ct)
     {
         var ns = _stream.Stream;
         var lengthBuf = new byte[4];
-        var be = new BigEndianBinaryReader(ns);
         var reader = new BinaryReader(ns);
 
         while (!ct.IsCancellationRequested)

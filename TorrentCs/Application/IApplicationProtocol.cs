@@ -17,7 +17,13 @@ public interface IApplicationProtocol
     long Uploaded { get; }
 
     void ConnectToPeer(ITransportStream stream);
-    void AcceptConnection(AcceptPeerConnectionEventArgs args);
+
+    /// <summary>
+    /// Accepts an incoming connection that has already been routed to this torrent (its handshake
+    /// was read and the info-hash matched). The protocol replies with its own handshake.
+    /// </summary>
+    void AcceptConnection(ITransportStream stream);
+
     void PieceCompleted(Piece piece);
     void PieceCorrupted(Piece piece);
     void PeersAvailable(IEnumerable<ITransportStream> peers);

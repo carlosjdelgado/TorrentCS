@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using TorrentCs.Application;
 using TorrentCs.Application.BitTorrent;
@@ -21,7 +22,7 @@ public class TorrentClient : ITorrentClient
     private readonly IPipelineFactory _pipelineFactory;
     private readonly IResumeStore _resumeStore;
     private readonly Dictionary<Sha1Hash, TorrentDownload> _downloads = [];
-    private readonly List<IApplicationProtocol> _protocols = [];
+    private readonly ConcurrentDictionary<Sha1Hash, IApplicationProtocol> _protocolsByInfoHash = new();
     private readonly List<ResumePersister> _resumePersisters = [];
 
     public TorrentClient(
@@ -72,7 +73,7 @@ public class TorrentClient : ITorrentClient
         var dataHandler = new BlockDataHandler(fileHandler, metainfo);
 
         var protocol = _applicationProtocolFactory.Create(metainfo, dataHandler);
-        _protocols.Add(protocol);
+        _protocolsByInfoHash[metainfo.InfoHash] = protocol;
 
         RestoreResume(metainfo, protocol, downloadDirectory);
 
@@ -117,12 +118,31 @@ public class TorrentClient : ITorrentClient
     private void OnIncomingConnection(AcceptConnectionEventArgs args)
     {
         args.Accept();
+        _ = RouteIncomingConnectionAsync(args.TransportStream);
+    }
 
-        // Route the incoming connection to a torrent. The application protocol completes the
-        // server-side handshake and verifies the info-hash, dropping the peer on mismatch.
-        // With a single active torrent this hands over directly; routing by info-hash across
-        // multiple torrents is a future improvement.
-        var protocol = _protocols.FirstOrDefault();
-        protocol?.AcceptConnection(new AcceptPeerConnectionEventArgs(args.TransportStream));
+    private async Task RouteIncomingConnectionAsync(ITransportStream stream)
+    {
+        try
+        {
+            // Read the incoming handshake and hand the connection to the torrent whose info-hash
+            // it carries, so a client serving several torrents routes each peer correctly.
+            var handshake = await BitTorrentPeer.ReadIncomingHandshakeAsync(stream.Stream);
+            if (_protocolsByInfoHash.TryGetValue(handshake.InfoHash, out var protocol))
+            {
+                protocol.AcceptConnection(stream);
+            }
+            else
+            {
+                _logger.LogDebug("Incoming connection for unknown info-hash {InfoHash}; dropping",
+                    handshake.InfoHash);
+                stream.Disconnect();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to read incoming handshake from {Address}", stream.DisplayAddress);
+            stream.Disconnect();
+        }
     }
 }

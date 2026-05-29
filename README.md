@@ -132,7 +132,7 @@ Planned features, in rough priority order:
 
 1. [x] **Choking / optimistic-unchoke** algorithm and upload management
 2. [x] **Resume support** — persist piece state to avoid re-hashing on restart
-3. [ ] **Route incoming connections** across multiple torrents by info-hash
+3. [x] **Route incoming connections** across multiple torrents by info-hash
 4. [ ] **UPnP port forwarding** — automatically open the listen port on the router
 5. [ ] **Extension protocol** ([BEP 10](https://www.bittorrent.org/beps/bep_0010.html)) — the foundation for most modern extensions
 6. [ ] **Peer exchange / PEX** ([BEP 11](https://www.bittorrent.org/beps/bep_0011.html)) — discover peers from other peers
